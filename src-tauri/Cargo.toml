@@ -17,3 +17,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+
+[target.'cfg(windows)'.dependencies]
+window-vibrancy = "0.8"
