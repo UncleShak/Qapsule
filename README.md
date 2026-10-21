@@ -1,5 +1,7 @@
 # Qapsule
 
+[![CI](https://github.com/UncleShak/Qapsule/actions/workflows/ci.yml/badge.svg)](https://github.com/UncleShak/Qapsule/actions/workflows/ci.yml)
+
 **See what your builds and agents are doing without switching windows, at under 1% idle CPU.**
 
 >**Work in progress.** Qapsule is being built in public. Nothing is installable yet; the first developer preview (v0.1) is planned for **22 December 2026**. Star or watch the repo to follow along.

@@ -1,0 +1,9 @@
+[package]
+name = "qapsule-protocol"
+description = "Activity model and messages shared by Qapsule and its clients"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

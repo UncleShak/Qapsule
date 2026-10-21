@@ -1,0 +1,17 @@
+# Rust
+/target
+
+# Tauri-generated capability schemas
+/src-tauri/gen/schemas
+
+# Frontend
+node_modules/
+ui/dist/
+*.local
+*.log
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store

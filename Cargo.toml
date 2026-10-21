@@ -1,0 +1,17 @@
+[workspace]
+members = ["src-tauri", "crates/*"]
+resolver = "3"
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/UncleShak/Qapsule"
+
+# Shrink release builds; see https://v2.tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

@@ -1,0 +1,19 @@
+[package]
+name = "qapsule-app"
+description = "The Qapsule desktop app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name, which
+# matters on Windows: https://github.com/rust-lang/cargo/issues/8519
+name = "qapsule_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
