@@ -67,10 +67,14 @@ Define these once as CSS custom properties in `ui/src/styles/tokens.css`. Compon
   /* Motion (Fluent curves and durations) */
   --ease-out: cubic-bezier(0, 0, 0, 1);      /* entering, growing */
   --ease-in: cubic-bezier(0.33, 0, 0.67, 1); /* leaving, shrinking (Fluent easy-ease; a pure accelerate curve looks like a snap on short shrinks) */
-  --ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.15); /* expand only, tiny overshoot */
-  --dur-fast: 167ms;
-  --dur-normal: 250ms;
-  --dur-slow: 333ms;
+  /* Spring curves: generate linear(...) values from the recipe in section 7 */
+  --spring-expand: /* damping 0.75, 280ms */;
+  --spring-pop: /* damping 0.8, 240ms */;
+  --spring-settle: /* critically damped; 180–220ms */;
+  --dur-ack: 100ms;
+  --dur-fast: 160ms;
+  --dur-normal: 220ms;
+  --dur-slow: 280ms;   /* the longest UI transition allowed; nothing exceeds 300ms */
 }
 ```
 
@@ -119,8 +123,11 @@ Rules: always `font-variant-numeric: tabular-nums`. No uppercase labels. No more
 |---|---|---|---|
 | Peek · idle | 120 × 36 | 18 | 16 |
 | Peek · music | 280 × 44 | 22 | 16 |
-| Peek · dual | 240 × 44 + 44 × 44 bubble, 16px apart | 22 each | 16 each |
-| Pop · agent | 320 × 64 | 28 | 16 |
+| Peek · dual | 240 × 44 + 44 × 44 bubble, 24px apart, joined by an arch | 22 each | 16 outer · 12 arch |
+| Pop · agent | 340 × 64 | 28 | 16 |
+| Pop · undo | 300 × 44 | 22 | 16 |
+| Power menu | 220 × 232 | 24 | 16 |
+| Power countdown | 340 × 60 | 28 | 16 |
 | Pop · message | 360 × 64–84 | 28 | 16 |
 | Expanded | 1000 × 176 | 32 | 24 |
 
@@ -133,7 +140,14 @@ Widget slots inside the expanded capsule: small = **280 × 128**, wide = **600 �
 ### Peek (always visible in Auto mode)
 - **Idle:** time only, 15/600 Display.
 - **One thing:** it takes the whole pill. Music = 28px art (radius 8) + title + audio bars. No controls in the peek.
-- **Dual:** main pill plus a separate 44px bubble on the right with a progress ring (accent, 2.5px stroke). Clicking the bubble swaps the two.
+- **Dual:** main pill plus a 44px bubble on the right with a progress ring (accent, 2.5px stroke). Clicking the bubble swaps the two.
+  - The two shapes are joined by **one round arch**, not two touching shoulders (those meet in a sharp point). Put a 24 × 22 piece of `--cap-bg` in the 24px gap, with a semicircle cut from its bottom. The arch's sides meet the pills' straight sides at the point where their bottom corners start, so the outline flows as one curve:
+
+```css
+.dual-arch { position: absolute; top: 0; width: 24px; height: 22px; background: var(--cap-bg);
+  mask: radial-gradient(circle at 50% 100%, transparent 11.5px, #000 12px); }
+```
+  - The pill keeps only its left outer shoulder and the bubble only its right one.
 - **Music on hover:** pill grows to 400 × 56 and shows artist plus previous / pause / next as glyph buttons.
 
 ### Pops (grow out of the peek, about 5s, then shrink back)
@@ -168,7 +182,14 @@ Fluent switch: 36 × 20 track, radius 10. On = accent track with dark 12px knob 
 ### Shortcut tile (opens Windows Settings)
 40 × 36, radius 10, `--fill-subtle`, icon 17px text-2, plus a tiny ↗ badge (7px, top-right, text-3) so it never looks like a toggle. Hover `--fill-hover-strong`.
 - Wi-Fi, Bluetooth, Display → open the matching Settings page.
-- Power → **button** with a tiny ▾ badge; opens a small menu: Sleep, Restart, Shut down (Shut down asks to confirm).
+- Power → **button** with a tiny ▾ badge. It opens the **power menu**, which grows out of the capsule (220 × 232):
+  - **Lock** and **Sign out**, then a divider, then **Sleep**, **Restart** and **Shut down**. Rows are 36px high, radius 10, with a 16px icon and a 13px label.
+  - **Lock** and **Sleep** happen at once, because nothing is lost.
+  - **Sign out**, **Restart** and **Shut down** close your apps, so they don't ask "Are you sure?". Instead the capsule morphs into a 5-second countdown ("Signing out in 5 · Save your work, or cancel") with a white **Cancel** button. Esc also cancels.
+  - Windows calls: lock `LockWorkStation`, sign out `ExitWindowsEx(EWX_LOGOFF)`, sleep `SetSuspendState`, restart and shut down `ExitWindowsEx` or `InitiateShutdown`. Never force-close apps; let Windows ask them to save.
+
+### Undo instead of confirmation
+Dismissing a pop removes it at once and morphs the capsule into "Notification dismissed · **Undo**" (300 × 44) for 4 seconds. Delete or Backspace dismisses with the keyboard. Only actions that can't be undone use a countdown (see the power menu).
 
 ### Progress
 - **Determinate ring** (timer, builds with real progress): accent stroke, round caps, track `--ring-track`. 3px on large rings, 2.5px on small.
@@ -205,17 +226,41 @@ Default screens: **Main** = Weather · Clock · Calendar. **Your widgets** = Age
 
 All motion is CSS `transform` / `opacity` / `clip-path` inside one fixed, transparent window (see the spec: one window with a click-through region). No JavaScript animation loops.
 
-| Transition | Duration | Easing |
-|---|---|---|
-| Peek appears (slides down from the edge) | `--dur-normal` | `--ease-out` |
-| Peek → pop (grows wider and taller from the top centre) | `--dur-normal` | `--ease-out` |
-| Pop → peek | `--dur-fast` | `--ease-in` |
-| Peek → expanded | `--dur-slow` | `--ease-spring` |
-| Expanded → peek | `--dur-normal` | `--ease-in` |
-| Screen switch (left/right) | `--dur-normal` | `--ease-out`, slide 24px + fade |
-| Content inside a growing shape | fades in 80ms after the shape starts | `--ease-out` |
+The reference implementation is the **"Motion v2"** artboard on the design canvas. It supersedes the first "Motion prototype".
 
-Content cross-fades: the old content fades out in 90ms with no delay; the new content fades in over 160ms, starting at 35% of the shape's transition. Pops return to the peek they came from after about 5 seconds (agent pops stay until handled). Shoulders scale with the shape so the capsule always reads as one piece. A working reference of all of this is the "Motion prototype" artboard on the design canvas. Respect Windows "Animation effects" off / `prefers-reduced-motion`: replace movement with 120ms fades.
+### Rules
+
+1. **Every animation has a stated purpose:** feedback, orientation or continuity. If you can't name one, don't animate.
+2. **Under 300 ms.** No UI transition runs longer.
+3. **Interruptible and redirectable.** A new state change mid-animation retargets from the current position; it never waits for the old animation to finish. CSS transitions do this natively, so never queue state changes behind `transitionend`.
+4. **Springs for shape changes.** Shapes move on spring curves expressed as CSS `linear()` easing generated from a damped spring (fallback `cubic-bezier` where `linear()` is unsupported). Growing may overshoot up to 3%; shrinking never overshoots.
+5. **Spatial consistency.** Everything grows from, and shrinks back to, the top centre along the same path. A pop returns to the exact peek it grew from.
+6. **Grow toward the final state.** Entering content starts at `translateY(-6px) scale(0.96)` and settles to `none`. Never animate from `scale(0)`.
+7. **Acknowledge in one frame.** Hovering the peek lifts it immediately (`scale(1.04)`, 100 ms, plus a brighter bottom hairline) before anything else happens. Buttons react on press, not release.
+8. **Respond to intent, not timers.** The peek expands when the pointer *slows* over it (speed under about 0.25 px/ms, then 60 ms), or after 180 ms of dwell. A pointer passing through quickly does nothing. Leaving the expanded view collapses it after a 300 ms grace period.
+9. **Frequent means fast.** Switching screens happens often, so it is a 160 ms slide of 16 px in the direction of the dots, with no spring.
+10. **Continuity between pops.** A second pop arriving while one is showing morphs the shape in place; it never collapses to the peek first.
+11. **Reduce motion.** When Windows "Animation effects" is off (`prefers-reduced-motion`), shapes change instantly, content cross-fades in 120 ms, and the audio bars stop.
+
+### Timings
+
+| Transition | Duration | Curve | Purpose |
+|---|---|---|---|
+| Hover acknowledgement | 100 ms | `--ease-out`, scale 1.04 | Feedback |
+| Idle → music | 220 ms | Spring, damping 0.9 (no visible overshoot) | Feedback |
+| Music → idle | 180 ms | Critically damped spring | Continuity |
+| Peek → pop | 240 ms | Spring, damping 0.8 (about 2% overshoot) | Feedback |
+| Pop → pop (replace) | 220 ms | Spring, damping 0.85 | Continuity |
+| Pop → peek | 180 ms | Critically damped spring | Continuity |
+| Peek → expanded | 280 ms | Spring, damping 0.75 (about 3% overshoot) | Orientation |
+| Expanded → peek | 220 ms | Critically damped spring | Continuity |
+| Screen switch | 160 ms | `--ease-out`, slide 16 px | Orientation |
+| Content in | 150 ms fade, 220 ms settle, starting at 30% of the shape's duration | `--ease-out` | Continuity |
+| Content out | 80 ms | linear | — |
+
+Spring curve recipe (generate once at build time, store as CSS variables): for damping ζ < 1, `x(t) = 1 − e^(−ζωt)(cos ω_d t + (ζω/ω_d) sin ω_d t)` with `ω = 5.3 / (ζT)`; for critical damping, `x(t) = 1 − e^(−ωt)(1 + ωt)` with `ω = 7.4 / T`. Sample 29 points over the duration T into `linear(...)`.
+
+Pops return to the peek they came from after about 5 seconds (agent pops stay until handled). Shoulders scale with the shape so the capsule always reads as one piece.
 
 ---
 
