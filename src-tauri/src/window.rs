@@ -1,8 +1,10 @@
 //! The one capsule window: flush with the top edge, out of the taskbar and
 //! Alt+Tab, and clipped to a region so clicks outside the pill pass through.
 
+use std::sync::Mutex;
+
 use serde::Deserialize;
-use tauri::{PhysicalPosition, WebviewWindow};
+use tauri::{AppHandle, PhysicalPosition, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CombineRgn, CreateRectRgn, DeleteObject, RGN_OR, SetWindowRgn,
@@ -13,6 +15,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
 };
 
+/// The last region the UI asked for, in CSS pixels, so it can be redone when the
+/// display scale changes without the UI noticing anything.
+static LAST_REGION: Mutex<Vec<Rect>> = Mutex::new(Vec::new());
+
 /// A rectangle in CSS pixels, relative to the window.
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct Rect {
@@ -20,6 +26,37 @@ pub struct Rect {
     pub y: f64,
     pub w: f64,
     pub h: f64,
+}
+
+/// Creates the capsule window from the `main` entry in tauri.conf.json (which has
+/// `create: false`, so this is the only place it is made). The webview starts with
+/// nothing clickable; the UI paints the capsule tucked, then slides it in.
+/// Don't call from a synchronous command or the event loop thread: on Windows that deadlocks.
+pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|w| w.label == "main")
+        .cloned()
+        .expect("tauri.conf.json defines the main window");
+    let window = WebviewWindowBuilder::from_config(app, &config)?.build()?;
+    make_tool_window(&window);
+    place(&window);
+    set_region(&window, &[]);
+    let subclassed = window.clone();
+    app.run_on_main_thread(move || hide_frame_painting(&subclassed))?;
+    let placed = window.clone();
+    window.on_window_event(move |event| {
+        if let WindowEvent::ScaleFactorChanged { .. } = event {
+            place(&placed);
+            let rects = LAST_REGION.lock().unwrap().clone();
+            set_region(&placed, &rects);
+        }
+    });
+    window.show()?;
+    Ok(window)
 }
 
 fn hwnd(window: &WebviewWindow) -> Option<HWND> {
@@ -75,8 +112,9 @@ pub fn hide_frame_painting(window: &WebviewWindow) {
     }
 }
 
-/// Clips the window to `rects`: only they are drawn and clickable.
+/// Clips the window to `rects` (CSS pixels): only they are drawn and clickable.
 pub fn set_region(window: &WebviewWindow, rects: &[Rect]) {
+    rects.clone_into(&mut LAST_REGION.lock().unwrap());
     let Some(hwnd) = hwnd(window) else { return };
     let scale = window.scale_factor().unwrap_or(1.0);
     let px = |v: f64| (v * scale).round() as i32;

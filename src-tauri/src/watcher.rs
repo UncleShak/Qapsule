@@ -1,28 +1,52 @@
 //! A hidden window on its own thread that Windows notifies about the hotkey,
-//! fullscreen apps and display changes. Purely event-driven: no polling.
+//! fullscreen apps and display changes, plus the edge strip: a tiny, nearly
+//! transparent native window at the top centre of the screen that brings a tucked
+//! capsule out on hover, and works while the webview doesn't exist.
+//! Purely event-driven: no polling.
 
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::thread;
 
 use qapsule_server::Engine;
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTOPRIMARY, MONITORINFO,
+    MonitorFromPoint, MonitorFromWindow,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, RegisterHotKey, VK_SPACE,
+    MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, RegisterHotKey, TME_LEAVE, TRACKMOUSEEVENT,
+    TrackMouseEvent, VK_SPACE,
 };
 use windows::Win32::UI::Shell::{ABM_NEW, ABN_FULLSCREENAPP, APPBARDATA, SHAppBarMessage};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClassNameW, GetForegroundWindow,
-    GetMessageW, GetWindowRect, IsZoomed, MSG, RegisterClassW, TranslateMessage, WM_APP,
-    WM_DISPLAYCHANGE, WM_DPICHANGED, WM_HOTKEY, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
+    GetMessageW, GetWindowRect, HWND_TOPMOST, IDC_ARROW, IsZoomed, LWA_ALPHA, LoadCursorW,
+    MA_NOACTIVATE, MSG, PostMessageW, RegisterClassW, SWP_HIDEWINDOW, SWP_NOACTIVATE,
+    SWP_SHOWWINDOW, SetLayeredWindowAttributes, SetWindowPos, TranslateMessage, WM_APP,
+    WM_DISPLAYCHANGE, WM_DPICHANGED, WM_HOTKEY, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WNDCLASSW,
+    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 use windows::core::w;
 
 const WM_APPBAR: u32 = WM_APP + 1;
+/// Asks the strip to show or hide itself to match `STRIP_WANTED`.
+const WM_STRIP: u32 = WM_APP + 2;
 const HOTKEY_ID: i32 = 1;
+/// From WinUser.h; the `windows` crate only exposes it with the Controls feature.
+const WM_MOUSELEAVE: u32 = 0x02A3;
+/// The strip's size in logical pixels.
+const STRIP_WIDTH: f64 = 120.0;
+const STRIP_HEIGHT: f64 = 3.0;
+
+/// The strip window, once it exists.
+static STRIP: AtomicIsize = AtomicIsize::new(0);
+/// Whether the strip should be on screen: true while the capsule is tucked away.
+static STRIP_WANTED: AtomicBool = AtomicBool::new(false);
+/// The pointer is over the strip, and Windows will say when it leaves.
+static STRIP_TRACKING: AtomicBool = AtomicBool::new(false);
 
 struct Context {
     engine: Engine,
@@ -30,6 +54,18 @@ struct Context {
 }
 
 static CONTEXT: OnceLock<Context> = OnceLock::new();
+
+/// Shows the edge strip while the capsule is tucked away, and hides it while it's out.
+/// Safe to call from any thread, before or after the watcher has started.
+pub fn set_edge_strip(visible: bool) {
+    STRIP_WANTED.store(visible, Ordering::SeqCst);
+    let strip = STRIP.load(Ordering::SeqCst);
+    if strip != 0 {
+        unsafe {
+            let _ = PostMessageW(Some(HWND(strip as _)), WM_STRIP, WPARAM(0), LPARAM(0));
+        }
+    }
+}
 
 /// Starts the watcher. Call once.
 pub fn spawn(engine: Engine, on_display_change: impl Fn() + Send + Sync + 'static) {
@@ -95,6 +131,37 @@ unsafe fn run() {
             eprintln!("qapsule: Ctrl+Alt+Space is taken by another app; the hotkey is off");
         }
 
+        let strip_class = w!("QapsuleEdgeStrip");
+        RegisterClassW(&WNDCLASSW {
+            lpfnWndProc: Some(strip_proc),
+            hInstance: instance.into(),
+            lpszClassName: strip_class,
+            hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+            ..Default::default()
+        });
+        match CreateWindowExW(
+            WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE,
+            strip_class,
+            w!("Qapsule edge"),
+            WS_POPUP,
+            0,
+            0,
+            0,
+            0,
+            None,
+            None,
+            Some(instance.into()),
+            None,
+        ) {
+            Ok(strip) => {
+                // Alpha 1 of 255: invisible, but still receives the mouse (alpha 0 would not).
+                let _ = SetLayeredWindowAttributes(strip, COLORREF(0), 1, LWA_ALPHA);
+                STRIP.store(strip.0 as isize, Ordering::SeqCst);
+                update_strip(strip);
+            }
+            Err(e) => eprintln!("qapsule: couldn't create the edge strip: {e}"),
+        }
+
         let mut message = MSG::default();
         while GetMessageW(&mut message, None, 0, 0).as_bool() {
             let _ = TranslateMessage(&message);
@@ -118,9 +185,81 @@ unsafe extern "system" fn window_proc(
                     .engine
                     .fullscreen(opening && foreground_is_fullscreen());
             }
-            WM_DISPLAYCHANGE | WM_DPICHANGED => (context.on_display_change)(),
+            WM_DISPLAYCHANGE | WM_DPICHANGED => {
+                (context.on_display_change)();
+                let strip = STRIP.load(Ordering::SeqCst);
+                if strip != 0 {
+                    unsafe { update_strip(HWND(strip as _)) };
+                }
+            }
             _ => {}
         }
+    }
+    unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+/// Puts the strip at the top centre of the primary monitor, shown or hidden as wanted.
+unsafe fn update_strip(strip: HWND) {
+    unsafe {
+        let monitor = MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY);
+        let mut info = MONITORINFO {
+            cbSize: size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if !GetMonitorInfoW(monitor, &mut info).as_bool() {
+            return;
+        }
+        let scale = f64::from(GetDpiForWindow(strip).max(96)) / 96.0;
+        let (w, h) = (
+            (STRIP_WIDTH * scale) as i32,
+            (STRIP_HEIGHT * scale).ceil() as i32,
+        );
+        let m = info.rcMonitor;
+        let show = if STRIP_WANTED.load(Ordering::SeqCst) {
+            SWP_SHOWWINDOW
+        } else {
+            SWP_HIDEWINDOW
+        };
+        let _ = SetWindowPos(
+            strip,
+            Some(HWND_TOPMOST),
+            m.left + (m.right - m.left - w) / 2,
+            m.top,
+            w,
+            h,
+            show | SWP_NOACTIVATE,
+        );
+    }
+}
+
+unsafe extern "system" fn strip_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WM_STRIP => unsafe { update_strip(hwnd) },
+        WM_MOUSEMOVE => {
+            if !STRIP_TRACKING.swap(true, Ordering::SeqCst) {
+                let mut track = TRACKMOUSEEVENT {
+                    cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
+                    dwFlags: TME_LEAVE,
+                    hwndTrack: hwnd,
+                    dwHoverTime: 0,
+                };
+                unsafe {
+                    let _ = TrackMouseEvent(&mut track);
+                }
+                if let Some(context) = CONTEXT.get() {
+                    context.engine.edge_hover();
+                }
+            }
+        }
+        WM_MOUSELEAVE => STRIP_TRACKING.store(false, Ordering::SeqCst),
+        // Touching the strip must never take focus from the app being used.
+        WM_MOUSEACTIVATE => return LRESULT(MA_NOACTIVATE as isize),
+        _ => {}
     }
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
 }

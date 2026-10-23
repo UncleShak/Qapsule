@@ -49,6 +49,7 @@ enum Command {
     SwapPeek,
     Pointer(bool),
     TogglePinned,
+    EdgeHover,
     Fullscreen(bool),
     Settings(Settings),
     Snapshot(oneshot::Sender<UiState>),
@@ -114,6 +115,11 @@ impl Engine {
 
     pub fn toggle_pinned(&self) {
         self.send(Command::TogglePinned);
+    }
+
+    /// The pointer touched the strip at the top edge where a tucked capsule hides.
+    pub fn edge_hover(&self) {
+        self.send(Command::EdgeHover);
     }
 
     pub fn fullscreen(&self, fullscreen: bool) {
@@ -186,6 +192,7 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
             Command::SwapPeek => core.swap_peek(now),
             Command::Pointer(over) => core.set_pointer(over, now),
             Command::TogglePinned => core.toggle_pinned(now),
+            Command::EdgeHover => core.reveal_from_edge(now),
             Command::Fullscreen(fullscreen) => core.set_fullscreen(fullscreen, now),
             Command::Settings(settings) => core.set_settings(settings, now),
             Command::Snapshot(reply) => {

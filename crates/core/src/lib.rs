@@ -25,6 +25,9 @@ pub const POP_DURATION: Duration = Duration::from_secs(5);
 pub const UNDO_DURATION: Duration = Duration::from_secs(4);
 /// How long a hover-revealed peek stays after the pointer leaves.
 pub const HOVER_GRACE: Duration = Duration::from_millis(600);
+/// How long touching the top edge brings a tucked capsule out for. Long enough for
+/// a destroyed webview to come back and notice the pointer over it.
+pub const EDGE_REVEAL: Duration = Duration::from_secs(2);
 /// At most 4 UI updates per second, whatever clients send.
 pub const UI_UPDATE_INTERVAL: Duration = Duration::from_millis(250);
 /// Older pops waiting behind the current one are dropped past this.
@@ -290,6 +293,14 @@ impl Core {
             self.pointer_over = false;
             self.hover_until = Some(now + HOVER_GRACE);
         }
+        self.coalescer.mark(now);
+    }
+
+    /// The pointer touched the strip at the top edge where a tucked capsule hides.
+    /// The capsule comes out for [`EDGE_REVEAL`], or for as long as the pointer is then over it.
+    pub fn reveal_from_edge(&mut self, now: Instant) {
+        let until = now + EDGE_REVEAL;
+        self.hover_until = Some(self.hover_until.map_or(until, |u| u.max(until)));
         self.coalescer.mark(now);
     }
 

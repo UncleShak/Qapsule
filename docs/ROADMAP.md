@@ -101,10 +101,10 @@ Two weeks to prove the 1% promise, build your main dashboard screen, and put a f
 
 **Milestone 5, "Lean when idle" (Thu 10 Dec)**
 
-- [ ] Webview lifecycle: alive while the peek shows; destroyed 10 seconds after being hidden or tucked away; off-screen render and slide-in on recreate.
+- [x] Webview lifecycle: alive while the peek shows; destroyed 10 seconds after being hidden or tucked away; off-screen render and slide-in on recreate.
 - [ ] Correct at 100%, 150% and 200% scaling.
-- [ ] `scripts/measure-idle.ps1`; peek CPU and memory, and every other budget in the spec, measured and put in the README.
-- [ ] One-day spike: can Qapsule get package identity and read Windows notifications? Decide: launch feature or later.
+- [x] `scripts/measure-idle.ps1`; peek CPU and memory, and every other budget in the spec, measured and put in the README.
+- [x] One-day spike: can Qapsule get package identity and read Windows notifications? Decide: launch feature or later. Answer: not unless SignPath signing is ready by milestone 9; otherwise v1.0 (docs/spikes/windows-notifications.md).
 
 **Milestone 6, "My day at a glance" (Fri 18 Dec)**
 

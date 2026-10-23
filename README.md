@@ -63,7 +63,7 @@ Anything can push an activity through the `qapsule` CLI or a local named pipe:
 qapsule wrap -- cargo build --release
 
 # Tell Qapsule your agent needs you, with a button that focuses its terminal
-qapsule push --id cc-4821 --source claude-code --title "Claude needs your input" --state needs_input --focus-pid 4821
+qapsule push --id cc-4821 --source claude-code --title "Claude needs your input" --state needs-input --focus-pid 4821
 
 # Clear it once you're done
 qapsule done --id cc-4821
@@ -76,6 +76,19 @@ Ready-made hook configs for Claude Code and Codex mean you won't have to write t
 - **Lean when idle:** under 1% CPU with the peek showing. Memory and CPU are measured before every release and the numbers are published here.
 - **Local only:** the pipe accepts connections from your own Windows user only. No accounts, no cloud, no telemetry.
 - **Safe buttons:** apps can push buttons that open a link, focus a window or call back to the app. They can never run commands.
+
+### Measured
+
+Every number below comes from [`scripts/measure-idle.ps1`](scripts/measure-idle.ps1) on a release build, counting Qapsule and all its WebView2 processes. Measured 23 Oct 2026 on a Ryzen 7 7730U laptop (16 threads, 16 GB) running Windows 11 build 26200. CPU is a share of the whole machine, as Task Manager shows it.
+
+| Situation | Budget | Measured |
+| --- | --- | --- |
+| Peek showing the time, 10 min | CPU under 1%, memory under 150 MB | **0.02% CPU, 121 MB** |
+| Progress pushed 10 times a second, 2 min | CPU under 3% | **0.13% CPU** |
+| Tucked away or behind a fullscreen app, 10 min | CPU under 0.5%, memory under 30 MB | **0.04% CPU, 9.6 MB** on average (2.7 MB, 1 process, between visits) |
+| Pop, from `qapsule push` to the first frame | 150 ms warm, 400 ms cold | **about 140 ms** warm, **590–690 ms** cold (over budget) |
+
+"Cold" means the capsule had been out of sight for over 10 seconds, so its webview had been closed to save memory and has to start again. See [decision 5](docs/decisions/0005-destroy-the-webview-when-hidden.md).
 
 ## Tech
 

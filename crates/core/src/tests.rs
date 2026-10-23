@@ -798,3 +798,28 @@ fn rate_limiter_allows_twenty_per_second() {
     assert!(!limiter.allow(clock.advance(999)));
     assert!(limiter.allow(clock.advance(1)));
 }
+
+#[test]
+fn touching_the_top_edge_reveals_a_tucked_capsule_for_a_while() {
+    let mut clock = Clock::new();
+    let settings = Settings {
+        visibility: VisibilityMode::OnDemand,
+        ..Settings::default()
+    };
+    let mut core = Core::new(settings, clock.now());
+    assert!(!core.snapshot(clock.now()).shown);
+    core.reveal_from_edge(clock.now());
+    assert!(core.snapshot(clock.now()).shown);
+    core.tick(clock.advance(1_999));
+    assert!(core.snapshot(clock.now()).shown);
+    core.tick(clock.advance(1));
+    assert!(!core.snapshot(clock.now()).shown, "nobody came over");
+
+    core.reveal_from_edge(clock.now());
+    core.set_pointer(true, clock.advance(500));
+    core.tick(clock.advance(5_000));
+    assert!(
+        core.snapshot(clock.now()).shown,
+        "stays while the pointer is over it"
+    );
+}

@@ -1,7 +1,7 @@
 // The capsule: peek, pop and undo states drawn from the core's UiState.
 // It holds no state of its own beyond what animation needs.
 
-import { type CSSProperties, type ReactNode, type TransitionEvent, useEffect, useRef } from "react";
+import { type CSSProperties, type ReactNode, type TransitionEvent, useEffect, useRef, useState } from "react";
 import { dismissPop, press, setHitRects, swapPeek, undo } from "../bridge";
 import type { ItemView, PopView, UiState } from "../types";
 import { Arch, Shape } from "./Shape";
@@ -44,7 +44,20 @@ function change(from: LayoutKind | null, to: LayoutKind, replaced: boolean): [st
 /** `hovered` is the pointer being over the capsule: a purely visual stretch, so it lives here. */
 export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }) {
   const kind = kindOf(state);
-  const tucked = !state.shown;
+  // A new webview first paints the capsule tucked (with nothing clickable), then slides
+  // it in, so a recreated webview never flashes into place half-drawn.
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, []);
+  const tucked = !state.shown || !entered;
   const stretched = hovered && !tucked;
   // The shape stretches on hover; the content keeps its size and place.
   const l = layout(kind, stretched);
@@ -106,7 +119,6 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
 
   return (
     <div className={`capsule ${tucked ? "tucked" : ""}`} style={style} onTransitionEnd={onTransitionEnd}>
-      {tucked && <div className="edge-strip" />}
       <div className="lift">
         <div className="fill" aria-hidden="true">
           <Shape box={l.side} />
