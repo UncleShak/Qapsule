@@ -48,7 +48,7 @@ Twenty features across the peek view and three screens, delivered in three relea
 | Dark mode toggle | System screen | Launch | Registry setting plus a settings-changed broadcast | Toggle |
 | Wi-Fi, Bluetooth, display, sound and power shortcuts | System screen | Launch | Open the matching Windows Settings page | Tap to open |
 | Agent board and timer | Your widgets screen | Launch | Activity store; built-in timer | Jump to terminal; start, pause, reset |
-| Notifications from other Windows apps | Peek | Launch if the spike works, otherwise later | Windows notification listener; needs an MSIX package | Open, dismiss |
+| Notifications from other Windows apps | Peek | Launch, through a signed identity package (SignPath) or the Store build; otherwise right after | Windows notification listener; needs signed package identity | Open, dismiss |
 | Experimental toggles: Do Not Disturb, night light, energy saver | System screen | v1.0 | Undocumented Windows settings, falling back to the Settings page | Toggle |
 | GitHub CI and PRs; dev servers | Your widgets screen; pop on failure or crash | v1.0 | GitHub API plus ntfy; Windows TCP table | Open, re-run |
 | Downloads | Your widgets screen; peek ¼ ring | v1.0 | Watching the Downloads folder | Open folder |

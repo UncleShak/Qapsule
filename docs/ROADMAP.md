@@ -104,7 +104,18 @@ Two weeks to prove the 1% promise, build your main dashboard screen, and put a f
 - [x] Webview lifecycle: alive while the peek shows; destroyed 10 seconds after being hidden or tucked away; off-screen render and slide-in on recreate.
 - [ ] Correct at 100%, 150% and 200% scaling.
 - [x] `scripts/measure-idle.ps1`; peek CPU and memory, and every other budget in the spec, measured and put in the README.
-- [x] One-day spike: can Qapsule get package identity and read Windows notifications? Decide: launch feature or later. Answer: not unless SignPath signing is ready by milestone 9; otherwise v1.0 (docs/spikes/windows-notifications.md).
+- [x] One-day spike: can Qapsule get package identity and read Windows notifications? Decide: launch feature or later. Answer: yes with a signed identity package; it's part of the vision, so it's planned for launch (see below and docs/spikes/windows-notifications.md).
+
+**Live Windows notifications** (part of the vision, so moved up; decided 23 Oct)
+
+Windows only tells an app about new notifications if the app has a signed package identity. On your own laptop a homemade certificate is enough; for everyone else it needs SignPath's signature (GitHub download) or the Microsoft Store (which signs the app itself). SignPath only accepts projects that are already released, so its application waits for v0.1. The Store route runs in parallel in case SignPath says no or is slow.
+
+- [ ] Before exams: register a Microsoft Store individual developer account (free; ID and selfie verification can be slow).
+- [ ] Before exams: install the Windows SDK (`winget install Microsoft.WindowsSDK.10.0.26100`) for MakeAppx and SignTool.
+- [ ] Before exams: turn on two-factor authentication on GitHub (SignPath requires it).
+- [ ] 18–30 Nov: build live notifications on your own laptop with a development identity: per-app pop and detail settings, nothing stored or logged. Use it daily.
+- [ ] 22 Dec, right after v0.1 is published: apply to SignPath Foundation. The README's code signing policy is already in place.
+- [ ] Milestone 9: ship notifications to everyone through whichever route is ready. If neither is, launch without them and switch them on when one lands.
 
 **Milestone 6, "My day at a glance" (Fri 18 Dec)**
 
@@ -116,6 +127,7 @@ Two weeks to prove the 1% promise, build your main dashboard screen, and put a f
 **Milestone 7, "v0.1 in public" (Tue 22 Dec)**
 
 - [ ] Unsigned installer on GitHub Releases, clearly labelled "preview".
+- [ ] The same day: apply to SignPath Foundation (it needs a released project).
 - [ ] A short post with a GIF: "what I built in my summer break."
 
 **Fallback:** if milestone 6 slips, v0.1 ships with the peek and agent pops only, and the main screen moves to 10 January.
@@ -136,12 +148,12 @@ Two weeks after the holidays: make the dashboard yours, then make Qapsule instal
 
 **Milestone 9, "A stranger installs it" (Sun 17 Jan)**
 
-- [ ] Apply to SignPath Foundation for free code signing early in the phase; ship unsigned with a clear note if approval hasn't come through.
+- [ ] If SignPath has approved Qapsule, sign the installer and the identity package in CI; otherwise ship unsigned with a clear note.
 - [ ] Auto-update through the Tauri updater and GitHub Releases; publish to winget and Scoop.
 - [ ] `qapsule doctor` for diagnostic reports. No telemetry.
 - [ ] Landing page on GitHub Pages, a 30–60 second demo video, and launch posts written in advance.
 - [ ] Ask one friend to install it using only the docs, and fix whatever trips them up.
-- [ ] If the milestone 5 spike succeeded: Windows notifications in the peek, with per-app pop and detail settings. Otherwise, move it to v1.0 and launch without it.
+- [ ] Windows notifications for everyone, through the SignPath-signed installer or a Microsoft Store build, whichever is ready. Otherwise launch without them and switch them on when one lands.
 
 **Gate:** a fresh machine goes from install to a live Claude Code status in under five minutes, following only the docs.
 
@@ -194,7 +206,7 @@ About 5 hours a week.
 
 **Money**
 
-- [ ] Register a Microsoft Store individual developer account. It's free and needs only a Microsoft account plus ID and selfie verification; start early in case verification is slow.
+- [ ] Register a Microsoft Store individual developer account (moved up to before the Nov exams for live notifications). It's free and needs only a Microsoft account plus ID and selfie verification.
 - [ ] Package Qapsule as an MSIX, so the Store hosts, signs and auto-updates it for free.
 - [ ] Publish a paid Store listing at $3–5 on v1.0 day, described as the one-click, auto-updating build.
 - [ ] Keep the GitHub Releases download free, and say so in the README and the Store listing.

@@ -32,19 +32,22 @@ A throwaway Rust program, run unpackaged on the development machine (Windows 11)
    - the installer registers it with `Add-AppxPackage -ExternalLocation <install folder>`
 4. **Signing is the blocker.** The identity package must be signed by a certificate the user's machine trusts.
    - A self-signed certificate works only on your own machine, after importing it into `LocalMachine\TrustedPeople`, which needs one admin prompt.
-   - For strangers' machines it needs a real code-signing certificate. That is exactly what the SignPath Foundation application in milestone 9 would provide.
+   - For strangers' machines it needs a real code-signing certificate. SignPath Foundation provides one for open-source projects, once they're released; the Microsoft Store signs Store builds itself.
 
-## Decision (recommended)
+## Decision
 
-**Not a launch feature unless SignPath approval arrives in time; otherwise v1.0.** This matches the roadmap's fallback.
+**A launch feature, built properly with package identity.** Live notifications are part of the project's vision, so they get two routes to users instead of waiting for one (decided 23 Oct, see the roadmap):
 
 - Don't build the timer-based version. It breaks the idle budget for a feature that can still silently show nothing on some machines.
-- In milestone 9, if SignPath has approved Qapsule, add the identity package to the installer and build the event-driven version: Windows notifications in the peek, with per-app pop and detail settings.
-- If not, ship launch without it and add it for v1.0, alongside the Microsoft Store build (MSIX, which has identity anyway).
+- Build the event-driven version first on the development machine, with a self-signed identity package (18–30 Nov).
+- For everyone else, either:
+  - **SignPath:** apply right after v0.1 is released on 22 Dec, because SignPath requires a released project; the installer then registers a SignPath-signed identity package.
+  - **Microsoft Store:** publish a Store build, which the Store signs (register the developer account early, as verification can be slow).
+- If neither is ready by launch, launch without it and switch it on when one lands.
 
 ## Consequences
 
-- The design keeps the "Notifications from other Windows apps" row as "launch if signing is ready, otherwise v1.0".
+- The spec's "Notifications from other Windows apps" row says: launch, through a signed identity package or the Store build.
 - When it's built, the setup guide must say:
   - Windows also keeps showing its own toast unless banners are turned off for that app.
   - Clicking opens the app, not the specific chat (known limits in the spec).

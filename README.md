@@ -111,11 +111,19 @@ Progress is tracked in [GitHub milestones](../../milestones).
 
 I'm building Qapsule as a solo student project between lectures, and posting progress as I go. Ideas and feedback are welcome in [issues](../../issues).
 
+## Code signing policy
+
+**Status: applying.** Qapsule will apply to the [SignPath Foundation](https://signpath.org) for free code signing as soon as the first release is out (planned for 22 December 2026). Until then, downloads are unsigned and labelled "preview".
+
+Once approved: *Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).*
+
+- **What is signed:** the Windows installer and app published on [GitHub Releases](../../releases), and the small identity package that lets Qapsule show other apps' notifications.
+- **How:** release files are built by GitHub Actions from this public repository and sent to SignPath for signing. Nobody on the project holds the private key. Each release is signed only after manual approval.
+- **Team roles** (a single-maintainer project for now):
+  - Committers and reviewers: [@UncleShak](https://github.com/UncleShak). Every pull request from anyone else is reviewed before it's merged.
+  - Approvers: [@UncleShak](https://github.com/UncleShak), who approves each signing request.
+- **Privacy:** this program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Qapsule only connects to the services behind widgets you turn on (Open-Meteo for weather, your calendar's iCal link, GitHub, and ntfy.sh for webhooks), and has no telemetry.
+
 ## License
 
-Licensed under either of
-
-- [MIT License](LICENSE-MIT)
-- [Apache License, Version 2.0](LICENSE-APACHE)
-
-at your option.
+Qapsule is open source under the [MIT License](LICENSE).
