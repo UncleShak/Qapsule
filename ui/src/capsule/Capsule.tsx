@@ -1,12 +1,12 @@
 // The capsule: peek, pop and undo states drawn from the core's UiState.
 // It holds no state of its own beyond what animation needs.
 
-import { type CSSProperties, type TransitionEvent, useEffect, useRef } from "react";
+import { type CSSProperties, type ReactNode, type TransitionEvent, useEffect, useRef } from "react";
 import { dismissPop, press, setHitRects, swapPeek, undo } from "../bridge";
 import type { ItemView, PopView, UiState } from "../types";
 import { Arch, Shape } from "./Shape";
 import { Glyph, stateGlyph } from "./Glyph";
-import { type Layout, type LayoutKind, type Rect, hitRects, layout, union } from "./geometry";
+import { type Box, type Layout, type LayoutKind, type Rect, hitRects, layout, union } from "./geometry";
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -80,20 +80,28 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
     }
     shownRects.current = next;
   }, [kind, tucked]);
-  const onTransitionEnd = (e: TransitionEvent) => {
-    if (e.propertyName === "transform" && pending.current) {
+  const settle = () => {
+    if (pending.current) {
       setHitRects(pending.current);
       pending.current = null;
     }
   };
+  const onTransitionEnd = (e: TransitionEvent) => {
+    if (e.propertyName === "transform") settle();
+  };
+  // A backstop for when the webview skips frames and transitionend never arrives. One
+  // timer per shape change, not a polling loop.
+  useEffect(() => {
+    if (!pending.current) return;
+    const timer = window.setTimeout(settle, duration + 100);
+    return () => window.clearTimeout(timer);
+  }, [kind, tucked, duration]);
 
   const style = {
     "--shape-ease": `var(${curve})`,
     "--shape-dur": `${duration}ms`,
     "--content-delay": `${Math.round(duration * 0.3)}ms`,
     "--tuck": `${-(l.main.h + 24)}px`,
-    // Keeps the content centred in the taller, stretched shape.
-    "--nudge": `${(l.main.h - base.main.h) / 2}px`,
   } as CSSProperties;
 
   return (
@@ -105,52 +113,64 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
           <Arch x={l.archX} />
           <Shape box={l.main} />
         </div>
-        <div className="nudge">
-          <Content state={state} layout={base} />
-        </div>
+        <Content state={state} rest={base} now={l} />
       </div>
     </div>
   );
 }
 
-function Content({ state, layout: l }: { state: UiState; layout: Layout }) {
-  const area = (box = l.main): CSSProperties => ({ left: box.x, width: box.w, height: box.h });
-  const kind = l.kind;
+/** Holds content over one shape. The content keeps the shape's resting size and only
+ *  moves to stay centred while the shape stretches, so text never scales or drifts. */
+function Slot({ rest, now, className = "", children }: { rest: Box; now: Box; className?: string; children: ReactNode }) {
+  const dx = now.x + now.w / 2 - (rest.x + rest.w / 2);
+  const dy = (now.h - rest.h) / 2;
+  return (
+    <div
+      className="slot"
+      style={{ left: rest.x, width: rest.w, height: rest.h, transform: `translate(${dx}px, ${dy}px)` }}
+    >
+      <div className={`content ${className}`}>{children}</div>
+    </div>
+  );
+}
+
+function Content({ state, rest, now }: { state: UiState; rest: Layout; now: Layout }) {
   // A new key remounts the content, which replays its entrance.
   if (state.pop) {
     return (
-      <div className="content" style={area()} key={`pop-${state.pop.seq}`}>
+      <Slot rest={rest.main} now={now.main} key={`pop-${state.pop.seq}`}>
         <Pop pop={state.pop} />
-      </div>
+      </Slot>
     );
   }
   if (state.undo) {
     return (
-      <div className="content undo" style={area()} key="undo">
+      <Slot rest={rest.main} now={now.main} className="undo" key="undo">
         <span className="undo-text">Notification dismissed</span>
         <button type="button" className="undo-button" onClick={() => undo()}>
           Undo
         </button>
-      </div>
+      </Slot>
     );
   }
   if (state.peek.kind === "idle") {
     return (
-      <div className="content" style={area()} key="idle">
+      <Slot rest={rest.main} now={now.main} key="idle">
         <span className="clock">{state.clock}</span>
-      </div>
+      </Slot>
     );
   }
+  const main = state.peek.main;
   const side = state.peek.kind === "dual" ? state.peek.side : null;
   return (
     <>
-      <div className="content" style={area()} key={`${kind}-main-${state.peek.main.source}/${state.peek.main.id}`}>
-        <Item item={state.peek.main} />
-      </div>
+      <Slot rest={rest.main} now={now.main} key={`${rest.kind}-main-${main.source}/${main.id}`}>
+        <Item item={main} />
+      </Slot>
       {side && (
-        <div className="content" style={area(l.side)} key={`side-${side.source}/${side.id}`}>
+        <Slot rest={rest.side} now={now.side} key={`side-${side.source}/${side.id}`}>
           <Bubble item={side} />
-        </div>
+        </Slot>
       )}
     </>
   );

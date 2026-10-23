@@ -16,8 +16,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::Shell::{ABM_NEW, ABN_FULLSCREENAPP, APPBARDATA, SHAppBarMessage};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClassNameW, GetForegroundWindow,
-    GetMessageW, GetWindowRect, MSG, RegisterClassW, TranslateMessage, WM_APP, WM_DISPLAYCHANGE,
-    WM_DPICHANGED, WM_HOTKEY, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
+    GetMessageW, GetWindowRect, IsZoomed, MSG, RegisterClassW, TranslateMessage, WM_APP,
+    WM_DISPLAYCHANGE, WM_DPICHANGED, WM_HOTKEY, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows::core::w;
 
@@ -125,7 +125,8 @@ unsafe extern "system" fn window_proc(
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
-/// Windows also reports the desktop itself as "fullscreen" (for example after Win+D).
+/// Windows also reports the desktop itself as "fullscreen" (for example after Win+D),
+/// and a maximized window when the taskbar auto-hides. Neither should hide the capsule.
 fn foreground_is_fullscreen() -> bool {
     unsafe {
         let window = GetForegroundWindow();
@@ -135,7 +136,7 @@ fn foreground_is_fullscreen() -> bool {
         let mut class = [0u16; 32];
         let len = GetClassNameW(window, &mut class) as usize;
         let class = String::from_utf16_lossy(&class[..len]);
-        if class == "Progman" || class == "WorkerW" {
+        if class == "Progman" || class == "WorkerW" || IsZoomed(window).as_bool() {
             return false;
         }
         let mut rect = RECT::default();

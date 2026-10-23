@@ -67,11 +67,10 @@ button {
   transform: translateY(var(--tuck));
 }
 
-/* On hover the shape stretches (Capsule.tsx); the content only moves down with it. */
-.nudge {
+/* A slot sits over one shape and moves with it as it stretches (Capsule.tsx). */
+.slot {
   position: absolute;
-  inset: 0;
-  transform: translateY(var(--nudge));
+  top: 0;
   transition: transform var(--shape-dur) var(--shape-ease);
 }
 
@@ -129,7 +128,7 @@ button {
 }
 
 .piece.arch {
-  width: 24px;
+  width: 26px;
   height: 22px;
   mask: radial-gradient(circle at 50% 100%, transparent 11.5px, #000 12px);
 }
@@ -137,8 +136,9 @@ button {
 /* Content grows toward its final state; never from scale(0). */
 
 .content {
-  position: absolute;
-  top: 0;
+  position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   pointer-events: auto;
@@ -392,7 +392,7 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .piece,
   .lift,
-  .nudge {
+  .slot {
     transition: none;
   }
 

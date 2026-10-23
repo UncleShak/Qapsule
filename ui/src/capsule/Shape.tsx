@@ -30,7 +30,8 @@ export function Shape({ box }: { box: Box }) {
   );
 }
 
-/** The single round arch joining the dual peek's pill and bubble (DESIGN.md section 4). */
+/** The single round arch joining the dual peek's pill and bubble (DESIGN.md section 4).
+ *  It overlaps each neighbour by a pixel so their edges can't leave a seam. */
 export function Arch({ x }: { x: number }) {
-  return <div className="piece arch" style={at(x, 0)} />;
+  return <div className="piece arch" style={at(x - 1, 0)} />;
 }

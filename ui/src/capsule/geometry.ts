@@ -84,7 +84,8 @@ export function hitRects(kind: LayoutKind, tucked: boolean): Rect[] {
     const right = b.x + b.w + (b.right ? SHOULDER : 0) + SHADOW_SIDE;
     return { x, y: 0, w: right - x, h: b.h + SHADOW_BELOW };
   };
-  return l.dual ? [around(l.main), around(l.side)] : [around(l.main)];
+  // One rect across both parts of a dual peek, so the gap under the arch isn't cut away.
+  return l.dual ? union([around(l.main)], [around(l.side)]) : [around(l.main)];
 }
 
 /** The smallest rect list covering both, used while a shape is changing size. */
