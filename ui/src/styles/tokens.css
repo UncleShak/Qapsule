@@ -46,6 +46,8 @@
   --spring-replace: linear(0, 0.022, 0.077, 0.153, 0.239, 0.33, 0.42, 0.505, 0.584, 0.655, 0.718, 0.772, 0.819, 0.858, 0.891, 0.918, 0.94, 0.958, 0.971, 0.982, 0.99, 0.996, 1, 1.003, 1.005, 1.006, 1.006, 1.006, 1);
   /* idle → one thing, no visible overshoot: damping 0.9, 220ms */
   --spring-grow: linear(0, 0.02, 0.069, 0.137, 0.215, 0.297, 0.38, 0.459, 0.533, 0.6, 0.662, 0.716, 0.763, 0.805, 0.84, 0.87, 0.896, 0.917, 0.934, 0.949, 0.961, 0.97, 0.978, 0.984, 0.989, 0.992, 0.995, 0.997, 1);
+  /* hover stretch, elastic: about 20% overshoot of a few pixels: damping 0.45, 300ms */
+  --spring-hover: linear(0, 0.077, 0.264, 0.499, 0.732, 0.931, 1.077, 1.166, 1.203, 1.199, 1.167, 1.121, 1.072, 1.028, 0.994, 0.971, 0.96, 0.958, 0.963, 0.972, 0.982, 0.991, 0.999, 1.005, 1.008, 1.009, 1.008, 1.007, 1);
   /* shrinking back, critically damped: damping 1, 180ms */
   --spring-settle: linear(0, 0.029, 0.099, 0.189, 0.285, 0.381, 0.47, 0.552, 0.624, 0.687, 0.741, 0.787, 0.825, 0.857, 0.884, 0.906, 0.924, 0.939, 0.951, 0.96, 0.968, 0.975, 0.98, 0.984, 0.987, 0.99, 0.992, 0.994, 1);
   /* expanded → peek, critically damped: damping 1, 220ms */
@@ -63,6 +65,7 @@
     --spring-pop: var(--ease-out);
     --spring-replace: var(--ease-out);
     --spring-grow: var(--ease-out);
+    --spring-hover: var(--ease-out);
     --spring-settle: var(--ease-in);
     --spring-collapse: var(--ease-in);
   }

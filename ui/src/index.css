@@ -67,11 +67,12 @@ button {
   transform: translateY(var(--tuck));
 }
 
-/* Acknowledge the pointer in one frame (DESIGN.md section 7, rule 7). */
-.capsule:not(.tucked) .lift:hover {
-  transform: scale(1.04);
-  transition-duration: var(--dur-ack);
-  transition-timing-function: var(--ease-out);
+/* On hover the shape stretches (Capsule.tsx); the content only moves down with it. */
+.nudge {
+  position: absolute;
+  inset: 0;
+  transform: translateY(var(--nudge));
+  transition: transform var(--shape-dur) var(--shape-ease);
 }
 
 .fill {
@@ -391,7 +392,7 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .piece,
   .lift,
-  .capsule:not(.tucked) .lift:hover {
+  .nudge {
     transition: none;
   }
 

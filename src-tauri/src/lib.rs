@@ -196,6 +196,7 @@ pub fn run() {
                 .get_webview_window("main")
                 .expect("the main window is in tauri.conf.json");
             window::make_tool_window(&main);
+            window::hide_frame_painting(&main);
             window::place(&main);
             // Nothing is clickable until the UI says where the capsule is.
             window::set_region(&main, &[]);

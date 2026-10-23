@@ -30,6 +30,7 @@ const curves: [string, number, number, string][] = [
   ["--spring-pop", 0.8, 240, "peek → pop, about 2% overshoot"],
   ["--spring-replace", 0.85, 220, "pop → pop"],
   ["--spring-grow", 0.9, 220, "idle → one thing, no visible overshoot"],
+  ["--spring-hover", 0.45, 300, "hover stretch, elastic: about 20% overshoot of a few pixels"],
   ["--spring-settle", 1, 180, "shrinking back, critically damped"],
   ["--spring-collapse", 1, 220, "expanded → peek, critically damped"],
 ];

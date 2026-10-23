@@ -6,6 +6,8 @@ export const SHOULDER = 16;
 /** Room around the capsule for its shadow; clicks there are caught too, so keep it small. */
 const SHADOW_SIDE = 8;
 const SHADOW_BELOW = 14;
+/** How much a shape stretches while the pointer is over it. The bubble stretches less. */
+const HOVER = { w: 20, h: 6, bubble: 6 };
 /** The strip at the top edge that brings a tucked capsule out on hover. */
 const STRIP = { w: 120, h: 3 };
 
@@ -50,26 +52,33 @@ const SIZES: Record<Exclude<LayoutKind, "dual">, [number, number]> = {
   undo: [300, 44],
 };
 
-export function layout(kind: LayoutKind): Layout {
+/** The shapes for a state. `hovered` stretches them a little wider and taller. */
+export function layout(kind: LayoutKind, hovered = false): Layout {
+  const dw = hovered ? HOVER.w : 0;
+  const dh = hovered ? HOVER.h : 0;
   if (kind === "dual") {
-    const total = 240 + 24 + 44;
-    const x = CENTRE - total / 2;
+    const pill = 240 + dw;
+    const bubble = 44 + (hovered ? HOVER.bubble : 0);
+    const h = 44 + dh;
+    const x = CENTRE - (pill + 24 + bubble) / 2;
     return {
       kind,
-      main: { x, w: 240, h: 44, r: 22, left: true, right: false },
-      side: { x: x + 264, w: 44, h: 44, r: 22, left: false, right: true },
-      archX: x + 240,
+      main: { x, w: pill, h, r: h / 2, left: true, right: false },
+      side: { x: x + pill + 24, w: bubble, h: bubble, r: bubble / 2, left: false, right: true },
+      archX: x + pill,
       dual: true,
     };
   }
   const [w, h] = SIZES[kind];
-  const main = centred(w, h);
+  const main = centred(w + dw, h + dh);
   return { kind, main, side: main, archX: CENTRE - 12, dual: false };
 }
 
-/** The area to keep clickable: the visible shapes plus their shadow. */
-export function hitRects(l: Layout, tucked: boolean): Rect[] {
+/** The area to keep clickable: the shapes at their hovered size, plus their shadow.
+ *  Using the hovered size means hovering never has to change the window region. */
+export function hitRects(kind: LayoutKind, tucked: boolean): Rect[] {
   if (tucked) return [{ x: CENTRE - STRIP.w / 2, y: 0, w: STRIP.w, h: STRIP.h }];
+  const l = layout(kind, true);
   const around = (b: Box): Rect => {
     const x = b.x - (b.left ? SHOULDER : 0) - SHADOW_SIDE;
     const right = b.x + b.w + (b.right ? SHOULDER : 0) + SHADOW_SIDE;

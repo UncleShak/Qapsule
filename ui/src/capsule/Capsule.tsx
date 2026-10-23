@@ -18,8 +18,22 @@ function kindOf(state: UiState): LayoutKind {
   return "idle";
 }
 
+interface Shown {
+  kind: LayoutKind;
+  seq: number | null;
+  hovered: boolean;
+}
+
 /** The spring for a change of shape (DESIGN.md section 7). */
-function motion(from: LayoutKind | null, to: LayoutKind, replaced: boolean): [string, number] {
+function motion(from: Shown | null, to: Shown): [string, number] {
+  if (from && from.kind === to.kind && from.seq === to.seq && from.hovered !== to.hovered) {
+    // Stretch elastically toward the pointer; ease back without bouncing.
+    return to.hovered ? ["--spring-hover", 300] : ["--spring-collapse", 220];
+  }
+  return change(from?.kind ?? null, to.kind, from?.kind === "pop" && from.seq !== to.seq);
+}
+
+function change(from: LayoutKind | null, to: LayoutKind, replaced: boolean): [string, number] {
   if (from === to) return replaced ? ["--spring-replace", 220] : ["--spring-settle", 180];
   if (to === "pop") return from === "undo" ? ["--spring-replace", 220] : ["--spring-pop", 240];
   const size = (k: LayoutKind) => ({ idle: 0, one: 1, dual: 1, undo: 2, pop: 3 })[k];
@@ -27,25 +41,35 @@ function motion(from: LayoutKind | null, to: LayoutKind, replaced: boolean): [st
   return ["--spring-settle", 180];
 }
 
-export function Capsule({ state }: { state: UiState }) {
+/** `hovered` is the pointer being over the capsule: a purely visual stretch, so it lives here. */
+export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }) {
   const kind = kindOf(state);
-  const l = layout(kind);
   const tucked = !state.shown;
+  const stretched = hovered && !tucked;
+  // The shape stretches on hover; the content keeps its size and place.
+  const l = layout(kind, stretched);
+  const base = layout(kind);
 
   // Remember the last shape, to pick the spring and to cover both shapes while changing.
-  const previous = useRef<{ kind: LayoutKind; seq: number | null } | null>(null);
-  const popSeq = state.pop?.seq ?? null;
-  const replaced = previous.current?.kind === "pop" && kind === "pop" && previous.current.seq !== popSeq;
-  const [curve, duration] = motion(previous.current?.kind ?? null, kind, replaced);
+  // The spring is picked only when the shape changes, so an unrelated update (the
+  // clock, a progress value) can't swap the curve under a running animation.
+  const now: Shown = { kind, seq: state.pop?.seq ?? null, hovered: stretched };
+  const previous = useRef<Shown | null>(null);
+  const chosen = useRef<[string, number]>(["--spring-settle", 180]);
+  const p = previous.current;
+  if (!p || p.kind !== now.kind || p.seq !== now.seq || p.hovered !== now.hovered) {
+    chosen.current = motion(p, now);
+  }
+  const [curve, duration] = chosen.current;
   useEffect(() => {
-    previous.current = { kind, seq: popSeq };
+    previous.current = now;
   });
 
   // The clickable region covers the old and new shapes until the change finishes.
   const shownRects = useRef<Rect[]>([]);
   const pending = useRef<Rect[] | null>(null);
   useEffect(() => {
-    const next = hitRects(l, tucked);
+    const next = hitRects(kind, tucked);
     const first = shownRects.current.length === 0;
     if (first || reducedMotion()) {
       setHitRects(next);
@@ -55,7 +79,7 @@ export function Capsule({ state }: { state: UiState }) {
       pending.current = next;
     }
     shownRects.current = next;
-  }, [kind, tucked]); // `l` follows from `kind`.
+  }, [kind, tucked]);
   const onTransitionEnd = (e: TransitionEvent) => {
     if (e.propertyName === "transform" && pending.current) {
       setHitRects(pending.current);
@@ -68,6 +92,8 @@ export function Capsule({ state }: { state: UiState }) {
     "--shape-dur": `${duration}ms`,
     "--content-delay": `${Math.round(duration * 0.3)}ms`,
     "--tuck": `${-(l.main.h + 24)}px`,
+    // Keeps the content centred in the taller, stretched shape.
+    "--nudge": `${(l.main.h - base.main.h) / 2}px`,
   } as CSSProperties;
 
   return (
@@ -79,7 +105,9 @@ export function Capsule({ state }: { state: UiState }) {
           <Arch x={l.archX} />
           <Shape box={l.main} />
         </div>
-        <Content state={state} layout={l} />
+        <div className="nudge">
+          <Content state={state} layout={base} />
+        </div>
       </div>
     </div>
   );

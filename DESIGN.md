@@ -236,7 +236,7 @@ The reference implementation is the **"Motion v2"** artboard on the design canva
 4. **Springs for shape changes.** Shapes move on spring curves expressed as CSS `linear()` easing generated from a damped spring (fallback `cubic-bezier` where `linear()` is unsupported). Growing may overshoot up to 3%; shrinking never overshoots.
 5. **Spatial consistency.** Everything grows from, and shrinks back to, the top centre along the same path. A pop returns to the exact peek it grew from.
 6. **Grow toward the final state.** Entering content starts at `translateY(-6px) scale(0.96)` and settles to `none`. Never animate from `scale(0)`.
-7. **Acknowledge in one frame.** Hovering the peek lifts it immediately (`scale(1.04)`, 100 ms, plus a brighter bottom hairline) before anything else happens. Buttons react on press, not release.
+7. **Acknowledge at once, elastically.** Hovering the capsule stretches the shape itself (20 px wider and 6 px taller; the ¼ bubble 6 px each way) on an elastic spring that overshoots by a few pixels and settles, while text and icons keep their size. Never scale the whole capsule like an image. Leaving eases back without a bounce. Buttons react on press, not release.
 8. **Respond to intent, not timers.** The peek expands when the pointer *slows* over it (speed under about 0.25 px/ms, then 60 ms), or after 180 ms of dwell. A pointer passing through quickly does nothing. Leaving the expanded view collapses it after a 300 ms grace period.
 9. **Frequent means fast.** Switching screens happens often, so it is a 160 ms slide of 16 px in the direction of the dots, with no spring.
 10. **Continuity between pops.** A second pop arriving while one is showing morphs the shape in place; it never collapses to the peek first.
@@ -246,7 +246,8 @@ The reference implementation is the **"Motion v2"** artboard on the design canva
 
 | Transition | Duration | Curve | Purpose |
 |---|---|---|---|
-| Hover acknowledgement | 100 ms | `--ease-out`, scale 1.04 | Feedback |
+| Hover stretch | 300 ms | Spring, damping 0.45 (about 20% of the stretch, 4 px) | Feedback |
+| Hover release | 220 ms | Critically damped spring | Continuity |
 | Idle → music | 220 ms | Spring, damping 0.9 (no visible overshoot) | Feedback |
 | Music → idle | 180 ms | Critically damped spring | Continuity |
 | Peek → pop | 240 ms | Spring, damping 0.8 (about 2% overshoot) | Feedback |

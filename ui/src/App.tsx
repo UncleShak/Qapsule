@@ -5,14 +5,21 @@ import type { UiState } from "./types";
 
 function App() {
   const [state, setState] = useState<UiState | null>(null);
+  const [hovered, setHovered] = useState(false);
 
   useEffect(() => subscribe(setState), []);
 
   // The window is clipped to the capsule, so entering the page means entering the capsule.
   useEffect(() => {
     const root = document.documentElement;
-    const enter = () => setPointer(true);
-    const leave = () => setPointer(false);
+    const enter = () => {
+      setHovered(true);
+      setPointer(true);
+    };
+    const leave = () => {
+      setHovered(false);
+      setPointer(false);
+    };
     root.addEventListener("pointerenter", enter);
     root.addEventListener("pointerleave", leave);
     return () => {
@@ -35,7 +42,7 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [pop]);
 
-  return state ? <Capsule state={state} /> : null;
+  return state ? <Capsule state={state} hovered={hovered} /> : null;
 }
 
 export default App;

@@ -3,12 +3,14 @@
 
 use serde::Deserialize;
 use tauri::{PhysicalPosition, WebviewWindow};
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CombineRgn, CreateRectRgn, DeleteObject, RGN_OR, SetWindowRgn,
 };
+use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    DefWindowProcW, GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WM_NCACTIVATE, WM_NCPAINT,
+    WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
 };
 
 /// A rectangle in CSS pixels, relative to the window.
@@ -42,6 +44,34 @@ pub fn make_tool_window(window: &WebviewWindow) {
         let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
         let style = (style | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize);
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style);
+    }
+}
+
+/// Stops Windows painting a title bar into the window when it is activated. The
+/// window has no frame, but Windows still repaints one on activation, and it shows
+/// as white bars through the transparent area around the capsule.
+/// Must be called on the thread that created the window.
+pub fn hide_frame_painting(window: &WebviewWindow) {
+    unsafe extern "system" fn proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+        _id: usize,
+        _data: usize,
+    ) -> LRESULT {
+        unsafe {
+            match msg {
+                // An lparam of -1 updates the active state without repainting the frame.
+                WM_NCACTIVATE => DefWindowProcW(hwnd, msg, wparam, LPARAM(-1)),
+                WM_NCPAINT => LRESULT(0),
+                _ => DefSubclassProc(hwnd, msg, wparam, lparam),
+            }
+        }
+    }
+    let Some(hwnd) = hwnd(window) else { return };
+    unsafe {
+        let _ = SetWindowSubclass(hwnd, Some(proc), 1, 0);
     }
 }
 
