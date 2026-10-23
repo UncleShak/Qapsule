@@ -1,0 +1,1 @@
+{"v":1,"type":"upsert","activity":{"id":"deploy","source":"my-script","title":"Deploy finished","state":"info","actions":[{"id":"open","label":"Open site","kind":"open_url","url":"https://example.com","primary":true},{"id":"ack","label":"Thanks","kind":"callback"}]}}

@@ -73,25 +73,25 @@ Starts the day after your last exam. Two and a half full-time weeks that end wit
 
 **Milestone 2, "Hello, pipe" (Sun 22 Nov)**
 
-- [ ] Protocol crate: activity fields, messages and action kinds as in the spec, with unit tests and sample JSON files.
-- [ ] Core crate: activity store with priority, expiry and update coalescing, tested with a fake clock.
-- [ ] Named-pipe server, locked to the current Windows user.
-- [ ] CLI: `push`, `done`, `fail`, `list`, `clear`, `wrap`.
+- [x] Protocol crate: activity fields, messages and action kinds as in the spec, with unit tests and sample JSON files.
+- [x] Core crate: activity store with priority, expiry and update coalescing, tested with a fake clock.
+- [x] Named-pipe server, locked to the current Windows user.
+- [x] CLI: `push`, `done`, `fail`, `list`, `clear`, `wrap`.
 
 **Milestone 3, "It hangs from the edge" (Sun 29 Nov)**
 
-- [ ] Window manager: one window flush with the top edge, with a click-through region matching the visible pill (fall back to resizing if regions misbehave).
-- [ ] Peek showing the time, updated once a minute.
-- [ ] Visibility modes: Auto, Always show, Peek on demand; hidden in fullscreen apps under Auto.
+- [x] Window manager: one window flush with the top edge, with a click-through region matching the visible pill (fall back to resizing if regions misbehave).
+- [x] Peek showing the time, updated once a minute.
+- [x] Visibility modes: Auto, Always show, Peek on demand; hidden in fullscreen apps under Auto.
 
 **Milestone 4, "Tap on the shoulder" (Sun 6 Dec)**
 
-- [ ] Pop notifications: the pill grows with up to two buttons, then shrinks back.
-- [ ] Dual status: ¾ main item, ¼ progress ring, click to swap. `qapsule wrap` shows as the ring.
-- [ ] `focus_window` action, including the parent-process walk that finds the terminal window.
-- [ ] Per-source pop settings: pop or not, details or not.
-- [ ] Claude Code hook config in `integrations/`, mapping its events to running, needs input and done.
-- [ ] Write the first three decision records: named pipe, Rust owns state, one window with a click-through region.
+- [x] Pop notifications: the pill grows with up to two buttons, then shrinks back.
+- [x] Dual status: ¾ main item, ¼ progress ring, click to swap. `qapsule wrap` shows as the ring.
+- [x] `focus_window` action, including the parent-process walk that finds the terminal window.
+- [x] Per-source pop settings: pop or not, details or not.
+- [x] Claude Code hook config in `integrations/`, mapping its events to running, needs input and done.
+- [x] Write the first three decision records: named pipe, Rust owns state, one window with a click-through region.
 
 **Gate:** Claude Code asks for input, the pill pops to say so, and one click brings the right terminal to the front.
 

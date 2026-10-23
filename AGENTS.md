@@ -31,11 +31,12 @@ UI component tests will use Vitest (not yet set up). Performance budgets are che
 ## Folders
 
 - `crates/protocol/` — The public contract: the activity model and pipe messages (MIT). Everything must round-trip through serde, ignore unknown fields and enforce limits. Changing it requires a decision record.
-- `crates/cli/` — The `qapsule` command-line client. It talks to the app only through the named pipe, using the protocol crate.
-- `crates/core/` *(planned)* — Activity store, priority, expiry, widget layout, event bus and the UI update coalescer. Plain Rust, tested with a fake clock and no window.
+- `crates/cli/` — The `qapsule` command-line client (`push`, `done`, `fail`, `list`, `clear`, `wrap`, `hook`). It talks to the app only through the named pipe, using the protocol crate. `tests/end_to_end.rs` runs the real binary against a real pipe server.
+- `crates/core/` — Activity store, priority, expiry, pops, visibility, settings and the UI update coalescer. Plain Rust: every method that needs the time takes `now`, so tests drive time by hand with no window.
+- `crates/server/` — Everything in the app that runs without a window: the named-pipe server (locked to the current user), the engine loop around the core, the action router (open link, focus window) and the config file. Tested without Tauri.
 - `crates/providers/` *(planned)* — One provider per data source (weather, calendar, media, timer, GitHub, dev servers, downloads), each running only as often as its visibility allows.
 - `src-tauri/` — The app shell: pipe server, window manager (peek/pop/expanded, webview lifetime, click-through region), tray, hotkey and action router. Keep logic thin here; put testable code in `crates/`.
 - `ui/` — React + TypeScript + Tailwind view (Vite, Bun) rendered in WebView2. It requests a snapshot from the core on start, then applies updates; button presses go back as Tauri commands.
-- `integrations/` *(planned)* — Hook configs for Claude Code, Codex and shell recipes that push activities via the CLI.
+- `integrations/` — Hook configs that push activities via the CLI: Claude Code now; Codex and shell recipes planned.
 - `docs/` — `SPEC.md`, `ROADMAP.md`, decision records in `docs/decisions/`, and integration guides.
-- `scripts/` *(planned)* — Tooling such as `measure-idle.ps1` for the performance budgets.
+- `scripts/` — Tooling: `springs.ts` generates the motion curves in `ui/src/styles/tokens.css`; `measure-idle.ps1` for the performance budgets is planned.
