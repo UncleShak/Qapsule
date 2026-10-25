@@ -38,5 +38,5 @@ UI component tests will use Vitest (not yet set up). Performance budgets are che
 - `src-tauri/` — The app shell: pipe server, window manager (peek/pop/expanded, webview lifetime, click-through region), tray, hotkey and action router. Keep logic thin here; put testable code in `crates/`.
 - `ui/` — React + TypeScript + Tailwind view (Vite, Bun) rendered in WebView2. It requests a snapshot from the core on start, then applies updates; button presses go back as Tauri commands.
 - `integrations/` — Hook configs that push activities via the CLI: Claude Code now; Codex and shell recipes planned.
-- `docs/` — `SPEC.md`, `ROADMAP.md`, decision records in `docs/decisions/`, and integration guides.
+- `docs/` — `SPEC.md`, `ROADMAP.md`, decision records in `docs/decisions/`, integration guides, and `architecture-review.md` (open refactor candidates; check it before restructuring a crate).
 - `scripts/` — Tooling: `springs.ts` generates the motion curves in `ui/src/styles/tokens.css`; `measure-idle.ps1` for the performance budgets is planned.
