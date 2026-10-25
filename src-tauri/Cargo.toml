@@ -20,7 +20,7 @@ qapsule-core = { path = "../crates/core" }
 qapsule-server = { path = "../crates/server" }
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = ["tray-icon"] }
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["sync", "time"] }
 
 [dependencies.windows]
 version = "0.62"

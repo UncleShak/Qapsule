@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use qapsule_core::{ConnId, Core, Effect, Settings, UiState};
+use qapsule_core::{ConnId, Core, Effect, PresenceEffect, Settings, UiState};
 use qapsule_protocol::{ClientMessage, ServerMessage};
 use tokio::sync::{mpsc, oneshot};
 
@@ -19,6 +19,10 @@ pub trait Shell: Send + 'static {
     fn update(&mut self, state: UiState);
     /// Open a link or bring a window forward.
     fn run(&mut self, effect: Effect);
+    /// The window must create or destroy the webview, switch the edge strip or empty
+    /// its click region. Called as soon as the core's `shown` changes or a timer is
+    /// due, not rate limited.
+    fn presence(&mut self, effect: PresenceEffect);
 }
 
 /// The real action router.
@@ -52,6 +56,7 @@ enum Command {
     EdgeHover,
     Fullscreen(bool),
     Settings(Settings),
+    WebviewGone,
     Snapshot(oneshot::Sender<UiState>),
 }
 
@@ -130,6 +135,11 @@ impl Engine {
         self.send(Command::Settings(settings));
     }
 
+    /// The webview no longer exists (it closed or failed to start).
+    pub fn webview_gone(&self) {
+        self.send(Command::WebviewGone);
+    }
+
     /// The full UI state, for a UI that has just started.
     pub async fn snapshot(&self) -> Option<UiState> {
         let (tx, rx) = oneshot::channel();
@@ -149,6 +159,13 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
             next_minute = now + until;
         }
         core.tick(now);
+        // Presence effects are window commands, not webview updates, so AGENTS.md rule 3
+        // (the coalescer) doesn't apply: never route them through it. Every command
+        // `continue`s or falls through to the top of this loop, so a change to `shown`
+        // is acted on at once, not at the coalescer's next deadline.
+        for effect in core.take_presence(now) {
+            shell.presence(effect);
+        }
         if let Some(state) = core.take_update(now) {
             shell.update(state);
         }
@@ -195,6 +212,11 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
             Command::EdgeHover => core.reveal_from_edge(now),
             Command::Fullscreen(fullscreen) => core.set_fullscreen(fullscreen, now),
             Command::Settings(settings) => core.set_settings(settings, now),
+            Command::WebviewGone => {
+                for effect in core.webview_gone(now) {
+                    shell.presence(effect);
+                }
+            }
             Command::Snapshot(reply) => {
                 let _ = reply.send(core.snapshot(now));
             }

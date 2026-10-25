@@ -1,93 +1,86 @@
-//! When the webview exists. It lives while the capsule is on screen and is
-//! destroyed 10 seconds after the capsule tucks away or hides behind a
-//! fullscreen app, so a hidden Qapsule is just the Rust process. The native
-//! strip at the top edge takes over the job of bringing the capsule back.
+//! Applies the core's presence effects to the real window: the webview, the
+//! edge strip and the click region. The decisions (and the timers) live in
+//! `qapsule_core::presence`; this is only the Win32 and Tauri side.
+//!
+//! Effects go into a channel from the first moment and one task runs them in
+//! order, each to completion, so a create and a destroy can never overlap. The
+//! task starts once the app is ready and commands can be answered.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
+use qapsule_core::PresenceEffect;
 use tauri::{AppHandle, Manager};
+use tokio::sync::mpsc;
 
 use crate::{watcher, window};
-
-/// How long a hidden capsule keeps its webview, in case it comes straight back.
-pub const DESTROY_AFTER: Duration = Duration::from_secs(10);
 
 #[derive(Clone)]
 pub struct Lifecycle {
     app: AppHandle,
-    inner: Arc<Mutex<Inner>>,
-    /// Bumped on every change; a pending destroy only runs if nothing changed since.
-    epoch: Arc<AtomicU64>,
-}
-
-struct Inner {
-    /// Whether the core says the capsule is on screen; `None` before the first update.
-    shown: Option<bool>,
-    /// False until the app has finished starting and commands can be answered.
-    started: bool,
+    tx: mpsc::UnboundedSender<PresenceEffect>,
+    /// Taken by `start`.
+    rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<PresenceEffect>>>>,
 }
 
 impl Lifecycle {
     pub fn new(app: AppHandle) -> Self {
+        let (tx, rx) = mpsc::unbounded_channel();
         Self {
             app,
-            inner: Arc::new(Mutex::new(Inner {
-                shown: None,
-                started: false,
-            })),
-            epoch: Arc::new(AtomicU64::new(0)),
+            tx,
+            rx: Arc::new(Mutex::new(Some(rx))),
         }
     }
 
-    /// Called once the app is ready: acts on whatever the core has said so far.
+    /// Called once the app is ready: starts acting on whatever the core has said so far.
     pub fn start(&self) {
-        let shown = {
-            let mut inner = self.inner.lock().unwrap();
-            inner.started = true;
-            inner.shown
+        let Some(mut rx) = self.rx.lock().unwrap().take() else {
+            return;
         };
-        if let Some(shown) = shown {
-            self.apply(shown);
-        }
+        let app = self.app.clone();
+        tauri::async_runtime::spawn(async move {
+            while let Some(effect) = rx.recv().await {
+                run(&app, effect);
+            }
+        });
     }
 
-    /// Called with every UI update from the core.
-    pub fn observe(&self, shown: bool) {
-        let started = {
-            let mut inner = self.inner.lock().unwrap();
-            if inner.shown == Some(shown) {
+    /// Queues `effect`; effects run strictly in the order they arrive.
+    pub fn apply(&self, effect: PresenceEffect) {
+        let _ = self.tx.send(effect);
+    }
+}
+
+fn run(app: &AppHandle, effect: PresenceEffect) {
+    match effect {
+        PresenceEffect::CreateWebview => {
+            // A window that is still closing makes this skip; its Destroyed event
+            // tells the core, which asks again.
+            if app.get_webview_window("main").is_some() {
                 return;
             }
-            inner.shown = Some(shown);
-            inner.started
-        };
-        if started {
-            self.apply(shown);
-        }
-    }
-
-    fn apply(&self, shown: bool) {
-        let epoch = self.epoch.fetch_add(1, Ordering::SeqCst) + 1;
-        watcher::set_edge_strip(!shown);
-        let app = self.app.clone();
-        if shown {
-            if app.get_webview_window("main").is_none() {
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) = window::create(&app) {
-                        eprintln!("qapsule: couldn't create the window: {e}");
-                    }
-                });
+            if let Err(e) = window::create(app) {
+                eprintln!("qapsule: couldn't create the window: {e}");
+                crate::webview_gone(app);
             }
-        } else {
-            let current = self.epoch.clone();
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(DESTROY_AFTER).await;
-                if current.load(Ordering::SeqCst) == epoch
-                    && let Some(main) = app.get_webview_window("main")
-                {
-                    let _ = main.destroy();
+        }
+        PresenceEffect::DestroyWebview => {
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.destroy();
+            }
+        }
+        PresenceEffect::EdgeStrip(visible) => {
+            if !visible {
+                window::set_cleared(false);
+            }
+            watcher::set_edge_strip(visible);
+        }
+        PresenceEffect::ClearRegion => {
+            window::set_cleared(true);
+            let handle = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(main) = handle.get_webview_window("main") {
+                    window::set_region(&main, &[]);
                 }
             });
         }

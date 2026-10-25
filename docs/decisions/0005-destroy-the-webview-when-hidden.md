@@ -14,7 +14,7 @@ The budget for a hidden Qapsule (tucked away in Peek on demand, or behind a full
 
 ## Choice
 
-Option 3. The webview is destroyed 10 seconds after the capsule goes out of sight (`src-tauri/src/lifecycle.rs`); the delay avoids churn when it comes straight back. Because Rust owns all state ([decision 2](0002-rust-owns-state.md)), nothing is lost: a new webview asks the core for a snapshot.
+Option 3. The webview is destroyed 10 seconds after the capsule goes out of sight (`crates/core/src/presence.rs`); the delay avoids churn when it comes straight back. Because Rust owns all state ([decision 2](0002-rust-owns-state.md)), nothing is lost: a new webview asks the core for a snapshot.
 
 Two pieces make it work:
 

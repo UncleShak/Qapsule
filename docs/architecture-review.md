@@ -1,6 +1,6 @@
 # Architecture review: deepening opportunities
 
-Date: 2026-10-25 · Branch: `milestone-5-lean-idle` · Status: open, none started
+Date: 2026-10-25 · Branch: `milestone-5-lean-idle` · Status: open, candidate 1 done
 
 Six refactors that would turn shallow modules into deep ones: a small interface with the behaviour behind it, tested through that interface. They came from a review of the files that changed most in the last five commits (`src-tauri`, `ui/src/capsule`, `crates/core`, `crates/server`). None needs a protocol change, and none contradicts a decision record; where a decision constrains a candidate, the candidate says so.
 
@@ -12,7 +12,7 @@ Terms: a **module** is anything with an interface and an implementation; it is *
 
 | # | Candidate | Strength | Depends on |
 | --- | --- | --- | --- |
-| 1 | [Presence module for window show/hide](#1-presence-module-for-window-showhide) | Strong | — |
+| 1 | [Presence module for window show/hide](#1-presence-module-for-window-showhide) | Done | — |
 | 2 | [Coalescer compares state instead of counting marks](#2-coalescer-compares-state-instead-of-counting-marks) | Strong | pairs with 1 |
 | 3 | [Pop buttons resolved in Rust](#3-pop-buttons-resolved-in-rust) | Strong | — |
 | 4 | [One input interface for the engine](#4-one-input-interface-for-the-engine) | Worth exploring | easier after 1 |
@@ -22,6 +22,8 @@ Terms: a **module** is anything with an interface and an implementation; it is *
 Suggested order: 1, then 2 (Presence's destroy timer is the first user of the timer collection), then 3. Candidate 4 is cheaper once 1 has added a second kind of engine output. 5 and 6 can go any time.
 
 ## 1. Presence module for window show/hide
+
+**Status:** done. Settled: (1) Presence lives in `crates/core`, pure, with `now` passed in. (2) `reveal_from_edge` stays a core input that changes `shown`. (3) Rust clears the region 1 s after `shown` turns false (the longest CSS transition is 280 ms), cancelled if shown again. (4) The 1100 px width is checked by a test in `src-tauri/src/window.rs`, not generated. (5) The cold pop is out of scope.
 
 **Files:** `crates/core/src/lib.rs` (`snapshot` computes `shown`), `src-tauri/src/lifecycle.rs`, `src-tauri/src/watcher.rs` (`STRIP`, `STRIP_WANTED`, `CONTEXT`, edge strip placement, `WM_DPICHANGED`), `src-tauri/src/window.rs` (`LAST_REGION`, `place`, `ScaleFactorChanged`), `src-tauri/src/lib.rs` (`WindowShell::update`), `ui/src/capsule/Capsule.tsx` and `geometry.ts` (empty hit rects when tucked).
 

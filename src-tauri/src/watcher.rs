@@ -9,13 +9,11 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::thread;
 
 use qapsule_server::Engine;
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTOPRIMARY, MONITORINFO,
-    MonitorFromPoint, MonitorFromWindow,
+    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, RegisterHotKey, TME_LEAVE, TRACKMOUSEEVENT,
     TrackMouseEvent, VK_SPACE,
@@ -30,6 +28,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 use windows::core::w;
+
+use crate::monitor;
 
 const WM_APPBAR: u32 = WM_APP + 1;
 /// Asks the strip to show or hide itself to match `STRIP_WANTED`.
@@ -200,31 +200,24 @@ unsafe extern "system" fn window_proc(
 
 /// Puts the strip at the top centre of the primary monitor, shown or hidden as wanted.
 unsafe fn update_strip(strip: HWND) {
+    let Some(top) = monitor::primary_top_centre() else {
+        return;
+    };
+    let (w, h) = (
+        (STRIP_WIDTH * top.scale) as i32,
+        (STRIP_HEIGHT * top.scale).ceil() as i32,
+    );
+    let show = if STRIP_WANTED.load(Ordering::SeqCst) {
+        SWP_SHOWWINDOW
+    } else {
+        SWP_HIDEWINDOW
+    };
     unsafe {
-        let monitor = MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY);
-        let mut info = MONITORINFO {
-            cbSize: size_of::<MONITORINFO>() as u32,
-            ..Default::default()
-        };
-        if !GetMonitorInfoW(monitor, &mut info).as_bool() {
-            return;
-        }
-        let scale = f64::from(GetDpiForWindow(strip).max(96)) / 96.0;
-        let (w, h) = (
-            (STRIP_WIDTH * scale) as i32,
-            (STRIP_HEIGHT * scale).ceil() as i32,
-        );
-        let m = info.rcMonitor;
-        let show = if STRIP_WANTED.load(Ordering::SeqCst) {
-            SWP_SHOWWINDOW
-        } else {
-            SWP_HIDEWINDOW
-        };
         let _ = SetWindowPos(
             strip,
             Some(HWND_TOPMOST),
-            m.left + (m.right - m.left - w) / 2,
-            m.top,
+            top.x - w / 2,
+            top.top,
             w,
             h,
             show | SWP_NOACTIVATE,

@@ -823,3 +823,60 @@ fn touching_the_top_edge_reveals_a_tucked_capsule_for_a_while() {
         "stays while the pointer is over it"
     );
 }
+
+#[test]
+fn presence_follows_shown_without_waiting_for_the_coalescer() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_fullscreen(true, clock.now());
+    assert_eq!(
+        core.take_presence(clock.now()),
+        vec![PresenceEffect::EdgeStrip(true)]
+    );
+    // An update goes out, so the next one is rate limited; presence isn't held back.
+    assert!(core.take_update(clock.now()).is_some());
+    core.toggle_pinned(clock.advance(10));
+    assert!(core.take_update(clock.now()).is_none());
+    assert_eq!(
+        core.take_presence(clock.now()),
+        vec![
+            PresenceEffect::EdgeStrip(false),
+            PresenceEffect::CreateWebview
+        ]
+    );
+    core.toggle_pinned(clock.advance(10));
+    assert_eq!(
+        core.take_presence(clock.now()),
+        vec![PresenceEffect::EdgeStrip(true)]
+    );
+    assert!(
+        core.next_deadline()
+            .is_some_and(|d| d <= clock.now() + presence::CLEAR_AFTER)
+    );
+}
+
+#[test]
+fn an_edge_reveal_shows_at_once_and_tucks_when_it_ends() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_fullscreen(true, clock.now());
+    core.take_presence(clock.now());
+    assert!(core.take_update(clock.now()).is_some());
+
+    core.reveal_from_edge(clock.advance(10));
+    assert_eq!(
+        core.take_presence(clock.now()),
+        vec![
+            PresenceEffect::EdgeStrip(false),
+            PresenceEffect::CreateWebview
+        ]
+    );
+    assert!(core.take_update(clock.now()).is_none(), "rate limited");
+
+    let end = clock.advance(EDGE_REVEAL.as_millis() as u64);
+    core.tick(end);
+    assert_eq!(
+        core.take_presence(end),
+        vec![PresenceEffect::EdgeStrip(true)]
+    );
+}

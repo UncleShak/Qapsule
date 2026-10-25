@@ -2,13 +2,14 @@
 //! the watcher. Keep logic thin here; testable code lives in `crates/`.
 
 mod lifecycle;
+mod monitor;
 mod watcher;
 mod window;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use qapsule_core::{Effect, Settings, UiState, VisibilityMode};
+use qapsule_core::{Effect, PresenceEffect, Settings, UiState, VisibilityMode};
 use qapsule_server::{Engine, Listener, Shell, config, pipe_name, run_effect};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
@@ -17,8 +18,8 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewWindow, Wry};
 use lifecycle::Lifecycle;
 use window::Rect;
 
-/// Sends the core's coalesced updates to the webview, creating or destroying the
-/// webview as the capsule comes and goes.
+/// Sends the core's coalesced updates to the webview, and applies its presence
+/// effects: creating or destroying the webview as the capsule comes and goes.
 struct WindowShell {
     app: AppHandle,
     lifecycle: Lifecycle,
@@ -26,13 +27,16 @@ struct WindowShell {
 
 impl Shell for WindowShell {
     fn update(&mut self, state: UiState) {
-        self.lifecycle.observe(state.shown);
         // Nothing to do if the webview doesn't exist: it asks for a snapshot when it starts.
         let _ = self.app.emit_to("main", "ui-state", state);
     }
 
     fn run(&mut self, effect: Effect) {
         run_effect(effect);
+    }
+
+    fn presence(&mut self, effect: PresenceEffect) {
+        self.lifecycle.apply(effect);
     }
 }
 
@@ -80,7 +84,17 @@ fn set_pointer(state: State<'_, AppState>, over: bool) {
 /// The UI reports where the capsule is drawn; everything else lets clicks through.
 #[tauri::command]
 fn set_hit_rects(window: WebviewWindow, rects: Vec<Rect>) {
+    if window::is_cleared() && !rects.is_empty() {
+        return;
+    }
     window::set_region(&window, &rects);
+}
+
+/// The webview no longer exists; the core decides whether to make another.
+fn webview_gone(app: &AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        state.engine.webview_gone();
+    }
 }
 
 fn set_mode(app: &AppHandle, mode: VisibilityMode) {
