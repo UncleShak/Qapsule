@@ -49,6 +49,8 @@ impl Shell for WindowShell {
     fn presence(&mut self, effect: PresenceEffect) {
         self.lifecycle.apply(effect);
     }
+
+    fn main_screen(&mut self, _visible: bool) {}
 }
 
 struct AppState {

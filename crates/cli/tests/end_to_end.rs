@@ -26,6 +26,7 @@ impl Shell for Recorder {
         self.effects.lock().unwrap().push(effect);
     }
     fn presence(&mut self, _effect: PresenceEffect) {}
+    fn main_screen(&mut self, _visible: bool) {}
 }
 
 struct Server {

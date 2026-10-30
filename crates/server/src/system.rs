@@ -147,12 +147,19 @@ fn top_level_windows() -> HashMap<u32, HWND> {
     found
 }
 
-/// The local time as `HH:MM`, and how long until the minute changes.
-pub fn local_clock() -> (String, Duration) {
+/// The local time as `HH:MM`, the date like `Sat 31 Oct`, and how long until the minute changes.
+pub fn local_clock() -> (String, String, Duration) {
+    const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
     let t = unsafe { GetLocalTime() };
     let into_minute = u64::from(t.wSecond) * 1000 + u64::from(t.wMilliseconds);
+    let day = DAYS[usize::from(t.wDayOfWeek) % 7];
+    let month = MONTHS[usize::from(t.wMonth).saturating_sub(1) % 12];
     (
         format!("{:02}:{:02}", t.wHour, t.wMinute),
+        format!("{day} {} {month}", t.wDay),
         Duration::from_millis(60_000u64.saturating_sub(into_minute).max(1)),
     )
 }
@@ -208,9 +215,15 @@ mod tests {
 
     #[test]
     fn clock_is_hours_and_minutes() {
-        let (text, until) = local_clock();
+        let (text, date, until) = local_clock();
         assert_eq!(text.len(), 5);
         assert_eq!(&text[2..3], ":");
+        // Like `Sat 31 Oct`: weekday, day without a leading zero, month.
+        let parts: Vec<&str> = date.split(' ').collect();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0].len(), 3);
+        assert!(!parts[1].starts_with('0') && parts[1].parse::<u8>().is_ok());
+        assert_eq!(parts[2].len(), 3);
         assert!(until <= Duration::from_secs(60));
     }
 }

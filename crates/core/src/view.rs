@@ -17,6 +17,82 @@ pub struct UiState {
     pub pop: Option<PopView>,
     /// "Notification dismissed · Undo" is showing.
     pub undo: bool,
+    /// The expanded view, only while it is open.
+    pub expanded: Option<ExpandedView>,
+    /// The window should hold keyboard focus (the hotkey opened the view).
+    pub focus: bool,
+}
+
+/// The main screen of the expanded view.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ExpandedView {
+    /// Local date like `Sat 31 Oct`.
+    pub date: String,
+    pub weather: WeatherView,
+    pub events: EventsView,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum WeatherView {
+    /// No city in the config.
+    NoCity,
+    Loading,
+    Ready(WeatherReady),
+    /// Never loaded and the last try failed.
+    Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WeatherReady {
+    pub city: String,
+    pub temp_c: i32,
+    pub condition: String,
+    pub glyph: String,
+    pub high_c: i32,
+    pub low_c: i32,
+    pub hourly: Vec<HourView>,
+    /// The last refresh failed; this is older data.
+    pub stale: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HourView {
+    pub label: String,
+    pub temp_c: i32,
+    pub glyph: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum EventsView {
+    /// No calendar link is set.
+    NoLink,
+    Loading,
+    Ready(EventsReady),
+    Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EventsReady {
+    pub now: Option<EventNow>,
+    pub next: Vec<EventNext>,
+    pub stale: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EventNow {
+    pub title: String,
+    /// End time as `HH:MM`.
+    pub until: String,
+    pub location: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EventNext {
+    pub title: String,
+    /// `09:00`, `Tomorrow 09:00` or `Thu 07:30`.
+    pub when: String,
 }
 
 // Built a few times a second at most and serialised at once, so boxing would buy nothing.

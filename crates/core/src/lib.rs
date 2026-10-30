@@ -2,6 +2,7 @@
 //! update coalescer. Plain Rust with no window and no real clock: every method
 //! that depends on time takes `now`, so tests can drive time by hand.
 
+mod expanded;
 pub mod presence;
 pub mod settings;
 pub mod store;
@@ -16,10 +17,14 @@ use qapsule_protocol::{
 };
 
 pub use presence::{Presence, PresenceEffect};
+pub use settings::{ExpandOn, Screen, WidgetConfig, WidgetKind, WidgetSize};
 pub use settings::{PopSetting, Settings, VisibilityMode};
 pub use store::{Entry, Key, Store};
 pub use timing::{Coalescer, RateLimiter};
-pub use view::{ActionView, ItemView, Peek, PopView, UiState};
+pub use view::{
+    ActionView, EventNext, EventNow, EventsReady, EventsView, ExpandedView, HourView, ItemView,
+    Peek, PopView, UiState, WeatherReady, WeatherView,
+};
 
 /// Identifies one pipe connection.
 pub type ConnId = u64;
@@ -30,6 +35,12 @@ pub const POP_DURATION: Duration = Duration::from_secs(5);
 pub const UNDO_DURATION: Duration = Duration::from_secs(4);
 /// How long a hover-revealed peek stays after the pointer leaves.
 pub const HOVER_GRACE: Duration = Duration::from_millis(600);
+/// How long the pointer must rest on the peek before it expands.
+pub const EXPAND_DWELL: Duration = Duration::from_millis(180);
+/// How long after the pointer slows down over the peek it expands.
+pub const EXPAND_INTENT_DELAY: Duration = Duration::from_millis(60);
+/// How long the expanded view stays after the pointer leaves it.
+pub const COLLAPSE_GRACE: Duration = Duration::from_millis(300);
 /// How long touching the top edge brings a tucked capsule out for. Long enough for
 /// a destroyed webview to come back and notice the pointer over it.
 pub const EDGE_REVEAL: Duration = Duration::from_secs(2);
@@ -83,9 +94,11 @@ pub struct Core {
     swapped: Option<(Key, Key)>,
     undo: Option<Undo>,
     clock: String,
+    date: String,
     fullscreen: bool,
-    /// The hotkey has brought the capsule out.
-    pinned: bool,
+    expanded: expanded::Expanded,
+    weather: WeatherView,
+    events: EventsView,
     pointer_over: bool,
     hover_until: Option<Instant>,
     coalescer: Coalescer,
@@ -94,6 +107,7 @@ pub struct Core {
 
 impl Core {
     pub fn new(settings: Settings, now: Instant) -> Self {
+        let weather = expanded::initial_weather(settings.weather_city());
         let mut core = Self {
             store: Store::default(),
             settings,
@@ -102,8 +116,12 @@ impl Core {
             swapped: None,
             undo: None,
             clock: String::new(),
+            date: String::new(),
             fullscreen: false,
-            pinned: false,
+            expanded: expanded::Expanded::default(),
+            weather,
+            // The calendar provider says `NoLink` when no link is set.
+            events: EventsView::Loading,
             pointer_over: false,
             hover_until: None,
             coalescer: Coalescer::new(UI_UPDATE_INTERVAL),
@@ -269,7 +287,9 @@ impl Core {
             seq: self.pop_seq,
         });
         if self.pops.len() > MAX_POPS {
-            self.pops.remove(0);
+            // Drop the oldest timed pop; a pop waiting for input goes only if all are.
+            let victim = self.pops.iter().position(|p| p.until.is_some());
+            self.pops.remove(victim.unwrap_or(0));
         }
     }
 
@@ -333,6 +353,9 @@ impl Core {
 
     /// Hides the current pop, leaving its activity in place. Can be undone.
     pub fn dismiss_pop(&mut self, now: Instant) {
+        if self.expanded.is_open() {
+            return;
+        }
         if let Some(pop) = self.pops.pop() {
             self.undo = Some(Undo {
                 until: now + UNDO_DURATION,
@@ -379,9 +402,11 @@ impl Core {
         if over {
             self.pointer_over = true;
             self.hover_until = None;
+            self.expanded_pointer_entered(now);
         } else if self.pointer_over {
             self.pointer_over = false;
             self.hover_until = Some(now + HOVER_GRACE);
+            self.expanded_pointer_left(now);
         }
         self.coalescer.mark(now);
     }
@@ -394,12 +419,6 @@ impl Core {
         self.coalescer.mark(now);
     }
 
-    /// The hotkey was pressed: bring the capsule out, or let it go back.
-    pub fn toggle_pinned(&mut self, now: Instant) {
-        self.pinned = !self.pinned;
-        self.coalescer.mark(now);
-    }
-
     pub fn set_fullscreen(&mut self, fullscreen: bool, now: Instant) {
         if self.fullscreen != fullscreen {
             self.fullscreen = fullscreen;
@@ -407,15 +426,23 @@ impl Core {
         }
     }
 
-    pub fn set_clock(&mut self, clock: String, now: Instant) {
+    pub fn set_clock(&mut self, clock: String, date: String, now: Instant) {
         self.clock = clock;
+        self.date = date;
         // Also refreshes elapsed minutes.
         self.coalescer.mark(now);
     }
 
     pub fn set_settings(&mut self, settings: Settings, now: Instant) {
         let dnd_ended = self.settings.do_not_disturb && !settings.do_not_disturb;
+        let city_changed = self.settings.weather_city() != settings.weather_city();
         self.settings = settings;
+        if city_changed {
+            self.weather = expanded::initial_weather(self.settings.weather_city());
+        }
+        if self.settings.expand_on != ExpandOn::Hover {
+            self.expanded.cancel_dwell();
+        }
         if self.settings.do_not_disturb {
             self.pops.clear();
         } else if dnd_ended {
@@ -446,12 +473,14 @@ impl Core {
         let mut changed = !expired.is_empty();
         let before = self.pops.len();
         // A finished activity's pop keeps its own timer; a waiting one goes with its activity.
+        // While the view is open nobody sees the pops, so timed ones wait.
+        let open = self.expanded.is_open();
         self.pops.retain(|p| {
             p.until
-                .map_or(!expired.contains(&p.key), |until| until > now)
+                .map_or(!expired.contains(&p.key), |until| open || until > now)
         });
         changed |= self.pops.len() != before;
-        if self.undo.as_ref().is_some_and(|u| u.until <= now) {
+        if !open && self.undo.as_ref().is_some_and(|u| u.until <= now) {
             self.undo = None;
             changed = true;
         }
@@ -459,6 +488,7 @@ impl Core {
             self.hover_until = None;
             changed = true;
         }
+        changed |= self.tick_expanded(now);
         if changed {
             self.coalescer.mark(now);
         }
@@ -468,13 +498,22 @@ impl Core {
     pub fn next_deadline(&self) -> Option<Instant> {
         [
             self.store.next_expiry(),
-            self.pops.iter().filter_map(|p| p.until).min(),
-            self.undo.as_ref().map(|u| u.until),
+            // Timed pops are paused while the view is open.
+            self.pops
+                .iter()
+                .filter_map(|p| p.until)
+                .filter(|_| !self.expanded.is_open())
+                .min(),
+            self.undo
+                .as_ref()
+                .map(|u| u.until)
+                .filter(|_| !self.expanded.is_open()),
             self.hover_until,
             self.coalescer.due(),
             self.presence.next_deadline(),
         ]
         .into_iter()
+        .chain(self.expanded.deadlines())
         .flatten()
         .min()
     }
@@ -497,6 +536,11 @@ impl Core {
     /// The window reports that the webview is gone: asks for a new one if the
     /// capsule should be on screen.
     pub fn webview_gone(&mut self, now: Instant) -> Vec<PresenceEffect> {
+        // Its pointer events are lost with it: the pointer has left.
+        if self.pointer_over {
+            self.pointer_over = false;
+            self.expanded_pointer_left(now);
+        }
         self.presence.webview_gone(now)
     }
 
@@ -511,13 +555,15 @@ impl Core {
 
     fn brought_out(&self) -> bool {
         let hovering = self.pointer_over || self.hover_until.is_some();
-        !self.pops.is_empty() || self.undo.is_some() || self.pinned || hovering
+        !self.pops.is_empty() || self.undo.is_some() || self.expanded.is_open() || hovering
     }
 
     /// The full UI state right now, for a UI that has just started.
     pub fn snapshot(&self, now: Instant) -> UiState {
-        let pop = self.pops.last().map(|p| self.pop_view(p));
-        let undo = self.undo.is_some();
+        // Pops and the undo bar wait behind the expanded view.
+        let open = self.expanded.is_open();
+        let pop = self.pops.last().filter(|_| !open).map(|p| self.pop_view(p));
+        let undo = self.undo.is_some() && !open;
         UiState {
             clock: self.clock.clone(),
             mode: self.settings.visibility,
@@ -525,6 +571,12 @@ impl Core {
             peek: self.peek(now),
             pop,
             undo,
+            expanded: open.then(|| ExpandedView {
+                date: self.date.clone(),
+                weather: self.weather.clone(),
+                events: self.events.clone(),
+            }),
+            focus: self.expanded.is_pinned(),
         }
     }
 

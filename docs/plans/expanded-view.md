@@ -138,10 +138,13 @@ bun run --cwd ui build
 - [ ] `scripts/measure-idle.ps1`: idle CPU and memory still within budget.
 - [ ] 150% and 200% scaling.
 - [ ] Read decision 0007; push the branch when happy.
+- [ ] Note: the phase 1 commit alone (without phase 2) opens the view in the core but the old UI ignores it; test from the branch tip.
 
 ## Night log
 
 Filled in by Plato as gates pass.
+
+- **Phase 1 passed.** Socrates asked 5 questions, all fixed: a lost webview counts as the pointer leaving; hover behaves the same in every mode; the undo bar pauses while open; needs-input pops survive the pop-queue cap; a city change resets the weather view (cities over 100 characters are ignored). Archon approved; 91 core tests.
 
 ## Deferred
 

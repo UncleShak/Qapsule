@@ -7,7 +7,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use qapsule_core::{ConnId, Core, Effect, PresenceEffect, Settings, UiState};
+use qapsule_core::{
+    ConnId, Core, Effect, EventsView, PresenceEffect, Settings, UiState, WeatherView,
+};
 use qapsule_protocol::{Activity, ClientMessage, ServerMessage};
 use tokio::sync::{mpsc, oneshot};
 
@@ -23,6 +25,12 @@ pub trait Shell: Send + 'static {
     /// its click region. Called as soon as the core's `shown` changes or a timer is
     /// due, not rate limited.
     fn presence(&mut self, effect: PresenceEffect);
+    /// The main screen of the expanded view opened (`true`) or closed (`false`).
+    /// Providers use it as their visibility (decision 0007): weather refreshes on
+    /// open if its data is over 30 minutes old, the calendar if over 15 minutes
+    /// old; neither refreshes while closed, apart from the calendar's own
+    /// 15-minute background check for pops. Called once per change.
+    fn main_screen(&mut self, visible: bool);
 }
 
 /// The real action router.
@@ -59,7 +67,12 @@ enum Command {
     Undo,
     SwapPeek,
     Pointer(bool),
-    TogglePinned,
+    PointerSlowed,
+    ExpandClick,
+    ToggleExpanded,
+    CloseExpanded,
+    Weather(WeatherView),
+    Events(EventsView),
     EdgeHover,
     Fullscreen(bool),
     Settings(Settings),
@@ -135,8 +148,34 @@ impl Engine {
         self.send(Command::Pointer(over));
     }
 
-    pub fn toggle_pinned(&self) {
-        self.send(Command::TogglePinned);
+    /// The pointer slowed down over the peek (sent once per hover).
+    pub fn pointer_slowed(&self) {
+        self.send(Command::PointerSlowed);
+    }
+
+    /// The peek was clicked outside any button.
+    pub fn expand_click(&self) {
+        self.send(Command::ExpandClick);
+    }
+
+    /// The hotkey: open the expanded view and keep it open, or close it.
+    pub fn toggle_expanded(&self) {
+        self.send(Command::ToggleExpanded);
+    }
+
+    /// Esc: close the expanded view.
+    pub fn close_expanded(&self) {
+        self.send(Command::CloseExpanded);
+    }
+
+    /// The weather provider has new data.
+    pub fn set_weather(&self, weather: WeatherView) {
+        self.send(Command::Weather(weather));
+    }
+
+    /// The calendar provider has new data.
+    pub fn set_events(&self, events: EventsView) {
+        self.send(Command::Events(events));
     }
 
     /// The pointer touched the strip at the top edge where a tucked capsule hides.
@@ -171,11 +210,15 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
     loop {
         let now = Instant::now();
         if now >= next_minute {
-            let (clock, until) = system::local_clock();
-            core.set_clock(clock, now);
+            let (clock, date, until) = system::local_clock();
+            core.set_clock(clock, date, now);
             next_minute = now + until;
         }
         core.tick(now);
+        // Like presence, a provider signal and not a webview update.
+        if let Some(visible) = core.take_main_screen() {
+            shell.main_screen(visible);
+        }
         // Presence effects are window commands, not webview updates, so AGENTS.md rule 3
         // (the coalescer) doesn't apply: never route them through it. Every command
         // `continue`s or falls through to the top of this loop, so a change to `shown`
@@ -232,7 +275,12 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
             Command::Undo => core.undo(now),
             Command::SwapPeek => core.swap_peek(now),
             Command::Pointer(over) => core.set_pointer(over, now),
-            Command::TogglePinned => core.toggle_pinned(now),
+            Command::PointerSlowed => core.pointer_slowed(now),
+            Command::ExpandClick => core.expand_click(now),
+            Command::ToggleExpanded => core.toggle_expanded(now),
+            Command::CloseExpanded => core.close_expanded(now),
+            Command::Weather(weather) => core.set_weather(weather, now),
+            Command::Events(events) => core.set_events(events, now),
             Command::EdgeHover => core.reveal_from_edge(now),
             Command::Fullscreen(fullscreen) => core.set_fullscreen(fullscreen, now),
             Command::Settings(settings) => core.set_settings(settings, now),

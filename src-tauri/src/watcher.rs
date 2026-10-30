@@ -178,7 +178,7 @@ unsafe extern "system" fn window_proc(
 ) -> LRESULT {
     if let Some(context) = CONTEXT.get() {
         match msg {
-            WM_HOTKEY if wparam.0 as i32 == HOTKEY_ID => context.engine.toggle_pinned(),
+            WM_HOTKEY if wparam.0 as i32 == HOTKEY_ID => context.engine.toggle_expanded(),
             WM_APPBAR if wparam.0 as u32 == ABN_FULLSCREENAPP => {
                 let opening = lparam.0 != 0;
                 context
