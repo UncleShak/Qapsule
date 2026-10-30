@@ -1,10 +1,10 @@
-# Qynetik Capsule Technical Spec
+# Qapsule Technical Spec
 
 Oct 18, 2026 · @Nadiya
 
 ## Summary
 
-Qynetik Capsule is a command hub that hangs from the top centre of the screen: always there at a glance, with quick access to your day, your work and your system.
+Qapsule is a command hub that hangs from the top centre of the screen: always there at a glance, with quick access to your day, your work and your system.
 
 - **Peek view** is the small pill you always see. It shows the time, or what's happening right now (music, a download, an agent), and briefly grows to pop notifications you've allowed.
 - **Expanded view** opens when you hover the peek. It has three screens: your widgets on the left, your main dashboard in the centre, and system controls on the right.
@@ -36,10 +36,10 @@ Twenty features across the peek view and three screens, delivered in three relea
 | Dual status: ¾ main item, ¼ ring or icon | Peek | v0.1 | Activity store priority | Click the ¼ to swap |
 | Visibility modes: Auto, Always show, Peek on demand | Peek | v0.1 | Settings | None |
 | **AI agent status** (your top priority) | Peek pop; agent board | v0.1 | Claude Code and Codex hooks call the CLI | Open terminal, dismiss |
-| Command progress (`capsule wrap`) | Peek ¼ ring | v0.1 | CLI | Dismiss |
+| Command progress (`qapsule wrap`) | Peek ¼ ring | v0.1 | CLI | Dismiss |
 | Custom pushes from any app | Peek | v0.1 | Named-pipe API | Open link, callback |
 | Now playing, with optional song-change pop | Peek; system screen | v0.1 | Windows media session | Play/pause, previous, next |
-| Pop notifications from Capsule's sources, each with on/off and show-details settings | Peek | v0.1 | Built in | Per source |
+| Pop notifications from Qapsule's sources, each with on/off and show-details settings | Peek | v0.1 | Built in | Per source |
 | Weather (left slot) | Main screen | v0.1 | Open-Meteo, city in settings | Open forecast |
 | Time and date (middle slot) | Main screen | v0.1 | System clock | None |
 | Current and next events (right slot) | Main screen | v0.1 | Calendar iCal link | Open event |
@@ -102,13 +102,13 @@ The capsule hangs from the top edge of the screen, like Bloom: a small peek most
 
 One Rust process owns all state; the React UI is a disposable view that can be destroyed at any moment without losing anything.
 
-&#91;embedded content: Capsule architecture · 7 components\]
+&#91;embedded content: Qapsule architecture · 7 components\]
 
 Clients and providers feed the core; the core tells the window what to show and streams updates to the UI whenever it exists.
 
 **Components**
 
-- **Clients:** the `capsule` CLI, agent hooks and any other app. They talk to Capsule only through the named pipe `\\.\pipe\qynetik-capsule`.
+- **Clients:** the `qapsule` CLI, agent hooks and any other app. They talk to Qapsule only through the named pipe `\\.\pipe\qapsule`.
 - **Pipe server:** accepts connections, checks messages against the protocol crate, and hands them to the core. A client stays connected to receive callbacks for its own activities.
 - **Core:** the heart. It holds the activity store (with priority and expiry), the widget layout, and an event bus. It decides what the window should show and coalesces UI updates to at most 4 per second.
 - **Providers:** one per data source (weather, calendar, media, timer, audio and brightness, Windows notifications, experimental toggles, GitHub, dev servers, downloads). Each runs only as often as its visibility allows (see Widgets and providers).
@@ -155,26 +155,26 @@ Clients send newline-delimited JSON over the named pipe. Every message carries `
 
 **Messages**
 
-- Client to Capsule: `hello`, `upsert`, `end`, `clear`, `list`.
-- Capsule to client: `ok`, `error` (with a code), `list_result`, `action` (a callback: which activity and which button).
+- Client to Qapsule: `hello`, `upsert`, `end`, `clear`, `list`.
+- Qapsule to client: `ok`, `error` (with a code), `list_result`, `action` (a callback: which activity and which button).
 
 **Example:** an agent that needs your input.
 
 ```json
-{"v":1,"type":"upsert","activity":{"id":"cc-4821","source":"claude-code","title":"Claude needs your input","subtitle":"capsule repo, session 4821","state":"needs_input","icon":"agent","actions":[{"id":"go","label":"Open terminal","kind":"focus_window","pid":4821,"primary":true},{"id":"x","label":"Dismiss","kind":"dismiss"}]}}
+{"v":1,"type":"upsert","activity":{"id":"cc-4821","source":"claude-code","title":"Claude needs your input","subtitle":"qapsule repo, session 4821","state":"needs_input","icon":"agent","actions":[{"id":"go","label":"Open terminal","kind":"focus_window","pid":4821,"primary":true},{"id":"x","label":"Dismiss","kind":"dismiss"}]}}
 ```
 
 The same from the CLI:
 
 ```powershell
-capsule push --id cc-4821 --source claude-code --title "Claude needs your input" --state needs_input --focus-pid 4821
-capsule done --id cc-4821
-capsule wrap -- cargo build --release
+qapsule push --id cc-4821 --source claude-code --title "Claude needs your input" --state needs_input --focus-pid 4821
+qapsule done --id cc-4821
+qapsule wrap -- cargo build --release
 ```
 
 **Agent mapping.** Hooks call the CLI. Check each tool's current hook names before building; they change.
 
-| Agent event | Capsule state | Title |
+| Agent event | Qapsule state | Title |
 | --- | --- | --- |
 | Prompt submitted, or a tool starts | `running` | Working |
 | Agent asks for permission or input | `needs_input` | Needs your input |
@@ -215,11 +215,11 @@ A widget is a React component plus a Rust provider that feeds it. Providers are 
 | Dev servers | Windows TCP table plus HTTP health check on pinned ports | Every 5 seconds | Every 30 seconds, if crash pops are on | Server stopped |
 | Downloads | File watcher on the Downloads folder | Event-driven | Event-driven | Optional |
 
-**System screen shortcuts** open Windows Settings pages directly: Wi-Fi, Bluetooth, display, sound and power. Capsule doesn't control Wi-Fi or Bluetooth itself.
+**System screen shortcuts** open Windows Settings pages directly: Wi-Fi, Bluetooth, display, sound and power. Qapsule doesn't control Wi-Fi or Bluetooth itself.
 
 **Known limits and risks**
 
-- **Windows notifications** need Capsule to have package identity (an MSIX package) plus your permission in Windows. Tauri's installers don't produce MSIX directly, so this needs a spike first (see Milestones). If it can't be done in time, launch without it.
+- **Windows notifications** need Qapsule to have package identity (an MSIX package) plus your permission in Windows. Tauri's installers don't produce MSIX directly, so this needs a spike first (see Milestones). If it can't be done in time, launch without it.
 - **Experimental toggles** (Do Not Disturb, night light, energy saver) have no public API. They rely on undocumented Windows internals that a Windows update can break. They live in one isolated module, are off by default, check that each change worked, and fall back to opening the Settings page.
 - **External monitor brightness** works only on monitors that support DDC/CI, and each change takes a moment, so it runs off the UI thread.
 - **Downloads** show "in progress" and "done", not a percentage: browsers don't tell other apps the final size.
@@ -239,7 +239,7 @@ A widget is a React component plus a Rust provider that feeds it. Providers are 
 
 ## Window lifecycle and performance
 
-The webview stays alive while the peek is on screen and is destroyed whenever Capsule is fully out of sight. Every budget below is measured, published in the README, and checked before each release.
+The webview stays alive while the peek is on screen and is destroyed whenever Qapsule is fully out of sight. Every budget below is measured, published in the README, and checked before each release.
 
 **When the webview lives**
 
@@ -255,11 +255,11 @@ The webview stays alive while the peek is on screen and is destroyed whenever Ca
 
 | Measure | Budget | How it's measured |
 | --- | --- | --- |
-| CPU, peek showing the time | Under 1% average | 10 minutes, Capsule plus all its WebView2 processes |
-| Memory, peek showing the time | Under 150 MB total (to confirm in milestone 5) | Capsule plus all its WebView2 processes |
+| CPU, peek showing the time | Under 1% average | 10 minutes, Qapsule plus all its WebView2 processes |
+| Memory, peek showing the time | Under 150 MB total (to confirm in milestone 5) | Qapsule plus all its WebView2 processes |
 | CPU and memory, tucked away or hidden | Under 0.5% and 30 MB | Webview destroyed; Rust process alone |
 | CPU, one activity updating | Under 3% average | Progress pushed 10 times a second for 2 minutes |
-| Push to visible pop | Under 150 ms warm, 400 ms cold | From `capsule push` to the first frame |
+| Push to visible pop | Under 150 ms warm, 400 ms cold | From `qapsule push` to the first frame |
 | Hover to expansion starting | Under 100 ms after the hover delay | Frame timing in the UI |
 | UI updates | At most 4 per second | Coalesced in the core, whatever clients send |
 
@@ -269,7 +269,7 @@ The webview stays alive while the peek is on screen and is destroyed whenever Ca
 
 ## Security and privacy
 
-Capsule only talks to your own user account locally, stores secrets in Windows Credential Manager, and sends nothing about you anywhere.
+Qapsule only talks to your own user account locally, stores secrets in Windows Credential Manager, and sends nothing about you anywhere.
 
 - **Pipe access:** the named pipe's security descriptor allows only the current Windows user. Other users and remote machines can't connect.
 - **No pushed command execution:** buttons from other apps can open http/https links, focus a window, or call back the pushing app. Only your own system-screen controls change system settings.
@@ -278,12 +278,12 @@ Capsule only talks to your own user account locally, stores secrets in Windows C
 - **Experimental toggles:** off by default, with a clear "may break after Windows updates" note; each change is verified and undone if Windows rejects it.
 - **ntfy topic:** generated randomly (at least 128 bits) on first use, treated like a password, and never containing secrets in its messages.
 - **Network calls:** only Open-Meteo, your iCal link, GitHub and ntfy, and only for widgets you have turned on. Listed in the README.
-- **No telemetry.** Logs stay on disk; `capsule doctor` builds a report the user can choose to send.
+- **No telemetry.** Logs stay on disk; `qapsule doctor` builds a report the user can choose to send.
 - **Untrusted text:** activity titles and notification text are rendered as plain text, never HTML, so nothing can inject script into the UI.
 
 ## Configuration
 
-One TOML file at `%APPDATA%\Qynetik\Capsule\config.toml`, editable by hand or through the settings and Edit screens UI. Capsule reloads it when it changes.
+One TOML file at `%APPDATA%\Qapsule\config.toml`, editable by hand or through the settings and Edit screens UI. Qapsule reloads it when it changes.
 
 ```toml
 [general]
@@ -329,19 +329,19 @@ toggles = false   # Do Not Disturb, night light, energy saver
 pinned = [{ name = "web", port = 5173 }, { name = "api", port = 8080 }]
 ```
 
-Secrets are never in this file. A wrong or unknown setting is logged and replaced by its default, so a typo can't stop Capsule from starting.
+Secrets are never in this file. A wrong or unknown setting is logged and replaced by its default, so a typo can't stop Qapsule from starting.
 
 ## Project structure
 
 A Cargo workspace where everything testable lives outside the Tauri app, so most code can be tested without opening a window.
 
 ```text
-qynetik-capsule/
+qapsule/
   crates/
     protocol/     # activity model + messages (public contract, MIT)
     core/         # activity store, priority, expiry, layout, event bus
     providers/    # weather, events, media, timer, github, devservers, downloads
-    cli/          # the `capsule` binary
+    cli/          # the `qapsule` binary
   src-tauri/      # app shell: pipe server, window manager, tray, action router
   ui/             # React + TypeScript + Tailwind (Vite, Bun)
   integrations/   # hook configs for Claude Code, Codex, shell recipes
@@ -372,14 +372,14 @@ CI runs everything except performance and the manual checklist on every push. A 
 
 ## Milestones
 
-Thirteen milestones from now to v1.0, each ending in something you can see working and show someone. Your top priority, agent status, arrives at milestone 4 on 6 December, early on purpose: once Capsule is useful to you every day, motivation looks after itself.
+Thirteen milestones from now to v1.0, each ending in something you can see working and show someone. Your top priority, agent status, arrives at milestone 4 on 6 December, early on purpose: once Qapsule is useful to you every day, motivation looks after itself.
 
 | # | Milestone | Target date | What you'll see working | Share it |
 | --- | --- | --- | --- | --- |
 | 0 | It's public | Sun 25 Oct | The repo on GitHub with a README and licence | First build-in-public post |
 | 1 | Skeleton | Sun 8 Nov | Workspace builds in CI; empty app opens | CI badge in the README |
-|  | *Exams 9–17 Nov: no Capsule work* |  |  |  |
-| 2 | Hello, pipe | Sun 22 Nov | `capsule push` in a terminal, then `capsule list` shows it | Terminal screenshot |
+|  | *Exams 9–17 Nov: no Qapsule work* |  |  |  |
+| 2 | Hello, pipe | Sun 22 Nov | `qapsule push` in a terminal, then `qapsule list` shows it | Terminal screenshot |
 | 3 | It hangs from the edge | Sun 29 Nov | The peek, flush with the top of the screen, showing the time; the three visibility modes; hidden in fullscreen | First GIF |
 | 4 | Tap on the shoulder | Sun 6 Dec | Claude Code needs input, the pill pops with an Open terminal button; dual status with a `wrap` progress ring; per-source pop settings | GIF: "my agent now taps me on the shoulder" |
 | 5 | Lean when idle | Thu 10 Dec | Peek CPU and memory measured and in the README; a one-day spike answers whether Windows notifications can work | The numbers |
@@ -419,6 +419,6 @@ Write each decision below as a short record in `docs/decisions/` yourself: conte
 
 - [ ] Peek design, to workshop: shape, size, colours, and exactly how the ¾ and ¼ split and swap.
 - [ ] Should the peek show seconds, or a second time zone, when only the time is showing?
-- [ ] Can Capsule get package identity for Windows notifications while keeping the GitHub installer? Answered by the milestone 5 spike.
+- [ ] Can Qapsule get package identity for Windows notifications while keeping the GitHub installer? Answered by the milestone 5 spike.
 - [ ] Is a weather source with clear commercial terms needed before the paid Store build?
 - [ ] Should third parties eventually define their own widgets, not just activities? Not before v1.0.
