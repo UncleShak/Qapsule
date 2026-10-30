@@ -66,7 +66,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let placed = window.clone();
     let handle = app.clone();
     window.on_window_event(move |event| match event {
-        WindowEvent::ScaleFactorChanged { .. } => {
+        // Only a display scale change resizes the window. Re-centre on the resize, not on
+        // ScaleFactorChanged: after that event tao moves the window to the rect Windows
+        // suggests, which grows from the left edge and would undo the centring.
+        WindowEvent::Resized(_) => {
             place(&placed);
             let rects = LAST_REGION.lock().unwrap().clone();
             set_region(&placed, &rects);
