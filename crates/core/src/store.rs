@@ -116,6 +116,15 @@ impl Store {
         Ok(previous)
     }
 
+    /// The key of the oldest activity (lowest `seq`) in a source.
+    pub fn oldest_in(&self, source: &str) -> Option<Key> {
+        self.entries
+            .iter()
+            .filter(|((s, _), _)| s == source)
+            .min_by_key(|(_, e)| e.seq)
+            .map(|(k, _)| k.clone())
+    }
+
     pub fn get(&self, key: &Key) -> Option<&Entry> {
         self.entries.get(key)
     }

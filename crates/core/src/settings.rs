@@ -76,6 +76,9 @@ impl Default for Settings {
 
 /// The category a source belongs to in `[notifications]`.
 pub fn category(source: &str) -> &'static str {
+    if qapsule_protocol::is_reserved_source(source) {
+        return "windows_apps";
+    }
     match source {
         "claude-code" | "codex" => "agents",
         "wrap" => "commands",

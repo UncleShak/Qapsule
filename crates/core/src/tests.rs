@@ -880,3 +880,316 @@ fn an_edge_reveal_shows_at_once_and_tucks_when_it_ends() {
         vec![PresenceEffect::EdgeStrip(true)]
     );
 }
+
+fn provider_core(toml: &str, clock: &Clock) -> Core {
+    let (settings, warnings) = Settings::from_toml(toml);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    Core::new(settings, clock.now())
+}
+
+#[test]
+fn provider_upsert_pops_an_info_activity() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
+        .unwrap();
+    assert_eq!(pop_id(&core, clock.now()).as_deref(), Some("n1"));
+    let pop = core.snapshot(clock.now()).pop.unwrap();
+    assert_eq!(pop.icon, "app");
+    assert_eq!(pop.title, "n1 title");
+}
+
+#[test]
+fn provider_pops_follow_source_and_category_settings() {
+    let clock = Clock::new();
+    let mut core = provider_core(
+        "[notifications]\n\"windows:Fake\" = { pop = false }\n",
+        &clock,
+    );
+    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
+        .unwrap();
+    assert_eq!(pop_id(&core, clock.now()), None);
+
+    let mut core = provider_core("[notifications]\nwindows_apps = { pop = false }\n", &clock);
+    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
+        .unwrap();
+    assert_eq!(pop_id(&core, clock.now()), None);
+
+    let mut core = provider_core(
+        "[notifications]\nwindows_apps = { pop = false }\n\"windows:Fake\" = { pop = true }\n",
+        &clock,
+    );
+    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
+        .unwrap();
+    assert_eq!(pop_id(&core, clock.now()).as_deref(), Some("n1"));
+}
+
+#[test]
+fn provider_details_off_hides_text_in_pop_peek_and_list() {
+    let clock = Clock::new();
+    let mut core = provider_core(
+        "[notifications]\nwindows_apps = { pop = true, details = false }\n",
+        &clock,
+    );
+    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
+        .unwrap();
+    let state = core.snapshot(clock.now());
+    let pop = state.pop.unwrap();
+    assert_eq!(pop.title, "New notification");
+    assert_eq!(pop.subtitle, None);
+    let Peek::One { main } = state.peek else {
+        panic!("expected one item");
+    };
+    assert_eq!(main.title, "New notification");
+    assert_eq!(main.subtitle, None);
+    let ServerMessage::ListResult { activities } = core.handle(
+        1,
+        ClientMessage::List {
+            source: Some("windows:Fake".into()),
+        },
+        clock.now(),
+    ) else {
+        panic!("expected a list");
+    };
+    assert_eq!(activities[0].title, "New notification");
+    assert_eq!(activities[0].subtitle, None);
+
+    // Pushed sources keep today's behaviour: details apply to pops only.
+    let mut core = provider_core(
+        "[notifications]\napps = { pop = true, details = false }\n",
+        &clock,
+    );
+    upsert(&mut core, activity("other", "p1", State::Info), clock.now());
+    let Peek::One { main } = core.snapshot(clock.now()).peek else {
+        panic!("expected one item");
+    };
+    assert_eq!(main.title, "p1 title");
+}
+
+#[test]
+fn provider_details_on_shows_text() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
+        .unwrap();
+    let state = core.snapshot(clock.now());
+    let pop = state.pop.unwrap();
+    assert_eq!(pop.title, "n1 title");
+    assert_eq!(pop.subtitle.as_deref(), Some("n1 subtitle"));
+    let Peek::One { main } = state.peek else {
+        panic!("expected one item");
+    };
+    assert_eq!(main.title, "n1 title");
+    assert_eq!(main.subtitle.as_deref(), Some("n1 subtitle"));
+}
+
+#[test]
+fn do_not_disturb_holds_provider_pops() {
+    let clock = Clock::new();
+    let settings = Settings {
+        do_not_disturb: true,
+        ..Settings::default()
+    };
+    let mut core = Core::new(settings, clock.now());
+    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
+        .unwrap();
+    assert_eq!(pop_id(&core, clock.now()), None);
+    assert_eq!(peek_ids(&core, clock.now()), vec!["n1"]);
+}
+
+#[test]
+fn provider_upsert_refuses_pushed_sources() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    let err = core
+        .provider_upsert(activity("my-script", "a", State::Info), clock.now())
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::InvalidMessage);
+    assert!(core.store().is_empty());
+}
+
+#[test]
+fn the_fifty_first_provider_activity_evicts_the_oldest() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    for i in 0..50 {
+        core.provider_upsert(
+            activity("windows:Fake", &i.to_string(), State::Info),
+            clock.advance(1),
+        )
+        .unwrap();
+    }
+    core.provider_upsert(
+        activity("windows:Fake", "50", State::Info),
+        clock.advance(1),
+    )
+    .unwrap();
+    let store = core.store();
+    assert_eq!(store.len(), 50);
+    assert!(store.get(&("windows:Fake".into(), "0".into())).is_none());
+    assert!(store.get(&("windows:Fake".into(), "1".into())).is_some());
+    assert!(store.get(&("windows:Fake".into(), "50".into())).is_some());
+}
+
+#[test]
+fn provider_remove_clears_the_activity_and_its_pop() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
+        .unwrap();
+    assert!(pop_id(&core, clock.now()).is_some());
+    core.provider_remove("windows:Fake", "n1", clock.now());
+    assert_eq!(pop_id(&core, clock.now()), None);
+    assert!(core.store().is_empty());
+    core.provider_remove("windows:Fake", "n1", clock.now());
+}
+
+#[test]
+fn provider_callback_buttons_become_provider_effects() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    let mut a = activity("windows:Fake", "n1", State::Info);
+    a.actions = vec![action("open", ActionKind::Callback, true)];
+    core.provider_upsert(a, clock.now()).unwrap();
+    assert_eq!(
+        core.press("windows:Fake", "n1", "open", clock.now()),
+        Some(Effect::Provider {
+            source: "windows:Fake".into(),
+            id: "n1".into(),
+            action: "open".into(),
+        })
+    );
+    assert_eq!(
+        pop_id(&core, clock.now()),
+        None,
+        "the press handled the pop"
+    );
+}
+
+#[test]
+fn windows_sources_get_a_friendly_label() {
+    assert_eq!(
+        view::source_label("windows:Microsoft-Teams"),
+        "Microsoft Teams"
+    );
+    assert_eq!(settings::category("windows:Anything"), "windows_apps");
+}
+
+#[test]
+fn provider_remove_drops_a_pending_undo_for_that_activity() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    let mut a = activity("windows:Fake", "n1", State::Info);
+    a.actions = vec![action("x", ActionKind::Dismiss, false)];
+    core.provider_upsert(a, clock.now()).unwrap();
+    core.press("windows:Fake", "n1", "x", clock.now());
+    assert!(core.snapshot(clock.now()).undo);
+    core.provider_remove("windows:Fake", "n1", clock.now());
+    assert!(!core.snapshot(clock.now()).undo);
+    core.undo(clock.now());
+    assert!(core.store().is_empty());
+    assert_eq!(pop_id(&core, clock.now()), None);
+}
+
+#[test]
+fn eviction_drops_the_evicted_activitys_queued_pop() {
+    let mut clock = Clock::new();
+    let on = Settings::default();
+    let (off, _) = Settings::from_toml("[notifications]\n\"windows:Fake\" = { pop = false }\n");
+    let mut core = Core::new(on.clone(), clock.now());
+    core.provider_upsert(activity("windows:Fake", "0", State::Info), clock.advance(1))
+        .unwrap();
+    assert_eq!(pop_id(&core, clock.now()).as_deref(), Some("0"));
+    core.set_settings(off, clock.now());
+    // Do Not Disturb isn't involved, so the queued pop survives the settings change.
+    for i in 1..50 {
+        core.provider_upsert(
+            activity("windows:Fake", &i.to_string(), State::Info),
+            clock.advance(1),
+        )
+        .unwrap();
+    }
+    core.set_settings(on, clock.now());
+    assert_eq!(pop_id(&core, clock.now()).as_deref(), Some("0"));
+    core.provider_upsert(
+        activity("windows:Fake", "50", State::Info),
+        clock.advance(1),
+    )
+    .unwrap();
+    assert!(
+        core.store()
+            .get(&("windows:Fake".into(), "0".into()))
+            .is_none()
+    );
+    assert_eq!(
+        pop_id(&core, clock.now()).as_deref(),
+        Some("50"),
+        "the evicted pop is gone, not queued behind"
+    );
+    core.dismiss_pop(clock.now());
+    assert_eq!(pop_id(&core, clock.now()), None);
+}
+
+#[test]
+fn updating_an_existing_provider_activity_at_the_limit_evicts_nothing() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    for i in 0..50 {
+        core.provider_upsert(
+            activity("windows:Fake", &i.to_string(), State::Info),
+            clock.advance(1),
+        )
+        .unwrap();
+    }
+    core.provider_upsert(activity("windows:Fake", "0", State::Info), clock.advance(1))
+        .unwrap();
+    assert_eq!(core.store().len(), 50);
+    assert!(
+        core.store()
+            .get(&("windows:Fake".into(), "0".into()))
+            .is_some()
+    );
+}
+
+fn list_of(core: &mut Core, now: Instant) -> Vec<Activity> {
+    let ServerMessage::ListResult { activities } = core.handle(
+        1,
+        ClientMessage::List {
+            source: Some("windows:X".into()),
+        },
+        now,
+    ) else {
+        panic!("expected a list");
+    };
+    activities
+}
+
+#[test]
+fn list_shows_real_text_with_details_on_and_per_app_override_wins() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.provider_upsert(activity("windows:X", "n1", State::Info), clock.now())
+        .unwrap();
+    assert_eq!(list_of(&mut core, clock.now())[0].title, "n1 title");
+
+    let mut core = provider_core(
+        "[notifications]\nwindows_apps = { details = false }\n\"windows:X\" = { details = true }\n",
+        &clock,
+    );
+    core.provider_upsert(activity("windows:X", "n1", State::Info), clock.now())
+        .unwrap();
+    let listed = list_of(&mut core, clock.now());
+    assert_eq!(listed[0].title, "n1 title");
+    assert_eq!(listed[0].subtitle.as_deref(), Some("n1 subtitle"));
+    let Peek::One { main } = core.snapshot(clock.now()).peek else {
+        panic!("expected one item");
+    };
+    assert_eq!(main.title, "n1 title");
+}
+
+#[test]
+fn reserved_sources_match_without_regard_to_case() {
+    assert!(qapsule_protocol::is_reserved_source("Windows:WhatsApp"));
+    assert_eq!(settings::category("WINDOWS:x"), "windows_apps");
+    assert_eq!(view::source_label("Windows:Some-App"), "Some App");
+}

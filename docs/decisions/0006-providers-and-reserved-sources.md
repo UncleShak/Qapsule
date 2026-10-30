@@ -32,7 +32,7 @@ For the core's input interface, the larger `core.apply(Input)` refactor (archite
 - **Provider actions.** Pressing a button on a provider activity yields a new internal `Effect::Provider { source, id, action }`, which the engine hands to the provider (for notifications, `open` launches `shell:AppsFolder\<AUMID>`). This is not part of the protocol; `ActionKind` is unchanged and the Callback branch is unaffected.
 - **Privacy.**
   - Notification text lives only in memory and is never written to disk or passed to `tracing`, `println` or error messages.
-  - When a source's `details` setting is off, `list` replies give its `windows:` activities the source label as their title and no subtitle, matching what the pill shows.
+  - When a source's `details` setting is off, `list` replies give its `windows:` activities the source label as their title and no subtitle, matching what the pill shows. (Superseded: see Amendments, 2026-10-30.)
   - Text is plain text, as for every activity (spec, Untrusted text).
 
 ## Consequences
@@ -41,3 +41,14 @@ For the core's input interface, the larger `core.apply(Input)` refactor (archite
 - Later providers (media, calendar, downloads) pick their own reserved prefix and reuse the same input path and `Effect::Provider`. Each new prefix is added to the reserved list in the same place and noted here.
 - Display names can change with the system language, which would reset an app's per-app setting. Acceptable for now; revisit if it bites.
 - Apps with more than 50 live notifications hit the per-source limit; the provider drops the oldest rather than failing.
+
+## Amendments
+
+**2026-10-30, after examination of the Phase 2 implementation**
+
+- **Details off hides text everywhere.** For a `windows:` source with `details` off, pops, peek items and `list` replies all show the generic title ("New notification") and no subtitle. Peek items previously showed the full title. Pushed sources keep the old rule: details apply to pops only.
+- **Reserved prefixes match without regard to case.** `Windows:WhatsApp` is refused like `windows:WhatsApp`.
+- **The `app` icon is reserved.** A pipe `upsert` with `icon: "app"` is refused with `invalid_message`. Combined with the prefix rule, a pushed activity can't copy a provider notification's look exactly. It may still share a label (a pushed source named `WhatsApp`); that's accepted, because any process running as the user can already raise real Windows toasts, so the pipe is not a stronger phishing channel than Windows itself.
+- **Provider buttons and ids carry no notification text.** Provider action labels are fixed strings (`Open`), action ids are fixed (`open`), and activity ids are the opaque Windows notification id. So with details off, nothing from the toast reaches the UI or `list` through labels or ids.
+- **Undo can't revive a removed notification.** If Windows reports a notification removed while its dismissal can still be undone, the pending undo for it is dropped too.
+- **Public surface.** `crates/protocol` exports `RESERVED_SOURCE_PREFIXES` and `is_reserved_source`; the matching helpers stay private to the crate.

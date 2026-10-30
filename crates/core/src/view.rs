@@ -80,7 +80,12 @@ pub fn source_label(source: &str) -> String {
         "claude-code" => "Claude Code".into(),
         "codex" => "Codex".into(),
         "wrap" => "Command".into(),
-        other => other.into(),
+        other => match other.split_once(':') {
+            Some((_, name)) if qapsule_protocol::is_reserved_source(other) => {
+                name.replace('-', " ")
+            }
+            _ => other.into(),
+        },
     }
 }
 
@@ -92,6 +97,7 @@ pub fn icon_for(activity: &Activity) -> String {
     match activity.source.as_str() {
         "claude-code" | "codex" => "agent",
         "wrap" => "build",
+        s if qapsule_protocol::is_reserved_source(s) => "app",
         _ => "info",
     }
     .into()

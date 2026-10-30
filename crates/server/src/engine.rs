@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use qapsule_core::{ConnId, Core, Effect, PresenceEffect, Settings, UiState};
-use qapsule_protocol::{ClientMessage, ServerMessage};
+use qapsule_protocol::{Activity, ClientMessage, ServerMessage};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::system;
@@ -36,6 +36,8 @@ pub fn run_effect(effect: Effect) {
         }
         // Callbacks never reach the shell; the engine sends them down the pipe.
         Effect::Callback { .. } => {}
+        // Phase 3 hands it to the provider.
+        Effect::Provider { .. } => {}
     }
 }
 
@@ -47,6 +49,11 @@ enum Command {
         source: String,
         id: String,
         action: String,
+    },
+    ProviderUpsert(Box<Activity>),
+    ProviderRemove {
+        source: String,
+        id: String,
     },
     DismissPop,
     Undo,
@@ -100,6 +107,16 @@ impl Engine {
 
     pub fn press(&self, source: String, id: String, action: String) {
         self.send(Command::Press { source, id, action });
+    }
+
+    /// An in-process provider adds or updates an activity in a reserved source.
+    pub fn provider_upsert(&self, activity: Activity) {
+        self.send(Command::ProviderUpsert(Box::new(activity)));
+    }
+
+    /// An in-process provider removes its activity.
+    pub fn provider_remove(&self, source: String, id: String) {
+        self.send(Command::ProviderRemove { source, id });
     }
 
     pub fn dismiss_pop(&self) {
@@ -204,6 +221,14 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
                 Some(effect) => shell.run(effect),
                 None => {}
             },
+            Command::ProviderUpsert(activity) => {
+                let source = activity.source.clone();
+                if let Err(e) = core.provider_upsert(*activity, now) {
+                    // Source and code only: never the notification text.
+                    eprintln!("provider activity from `{source}` refused: {:?}", e.code);
+                }
+            }
+            Command::ProviderRemove { source, id } => core.provider_remove(&source, &id, now),
             Command::DismissPop => core.dismiss_pop(now),
             Command::Undo => core.undo(now),
             Command::SwapPeek => core.swap_peek(now),

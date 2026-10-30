@@ -77,11 +77,32 @@ impl From<ProtocolError> for ServerMessage {
     }
 }
 
+fn check_not_reserved(source: &str) -> Result<(), ProtocolError> {
+    match crate::reserved_prefix(source) {
+        Some(prefix) => Err(ProtocolError::new(
+            ErrorCode::InvalidMessage,
+            format!("the {prefix} source prefix is reserved for Qapsule"),
+        )),
+        None => Ok(()),
+    }
+}
+
 impl ClientMessage {
     pub fn validate(&self) -> Result<(), ProtocolError> {
         match self {
             ClientMessage::Hello { .. } | ClientMessage::List { .. } => Ok(()),
-            ClientMessage::Upsert { activity } => activity.validate(),
+            ClientMessage::Upsert { activity } => {
+                check_not_reserved(&activity.source)?;
+                if let Some(icon) = activity.icon.as_deref()
+                    && crate::RESERVED_ICONS.contains(&icon)
+                {
+                    return Err(ProtocolError::new(
+                        ErrorCode::InvalidMessage,
+                        format!("the {icon} icon is reserved for Qapsule"),
+                    ));
+                }
+                activity.validate()
+            }
             ClientMessage::End {
                 source,
                 id,
@@ -89,6 +110,7 @@ impl ClientMessage {
                 title,
                 subtitle,
             } => {
+                check_not_reserved(source)?;
                 check_key("source", source)?;
                 check_key("id", id)?;
                 if !state.is_finished() {

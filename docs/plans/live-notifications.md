@@ -21,7 +21,7 @@ Toasts from other apps (WhatsApp, Teams, Outlook…) pop in the pill as they arr
 3. **`windows:` is a reserved source prefix.** The pipe server rejects pushes from clients that use it, so no script can fake an "Outlook" pop. This is a visible protocol behaviour, so it gets a decision record.
 4. **Provider activities have no pipe owner and their buttons go to the provider.** The core gets a narrow provider input path (upsert/remove with no `ConnId`), and a new internal `Effect::Provider { source, id, action }`. The notification provider's `act` opens the app via `shell:AppsFolder\<AUMID>`. This is not an `ActionKind`, so pushed clients can never use it (AGENTS.md rule 5).
 5. **No big engine refactor first.** Architecture review item 4 (`core.apply`) is deferred; we add one input path now and revisit when the second provider lands.
-6. **Privacy at ingest.** No `tracing`/`println` of notification text anywhere. `qapsule list` redacts `windows:` activities to the app name when details are off. Nothing is written to disk.
+6. **Privacy at ingest.** No `tracing`/`println` of notification text anywhere. With details off, `windows:` activities show "New notification" and no subtitle in pops, the peek and `qapsule list`. Provider button labels and ids are fixed, never toast text. Nothing is written to disk. (Decision 0006, amendments.)
 7. **History never pops.** Toasts already in the notification centre at startup are ignored; only `NotificationChanged` *Added* pops. *Removed* (the user cleared it in Windows) removes the activity.
 8. **No app logos in v1.** Icon is a generic `app` icon with the app name as the source label. Logos need an image pipeline; later.
 

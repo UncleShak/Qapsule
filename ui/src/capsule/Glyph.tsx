@@ -2,6 +2,7 @@
 
 const GLYPHS: Record<string, string> = {
   agent: "\uE99A", // Robot
+  app: "\uE71D", // AllApps
   build: "\uE756", // CommandPrompt
   download: "\uE896", // Download
   info: "\uE946", // Info
