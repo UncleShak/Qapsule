@@ -1,1 +1,412 @@
 @import "tailwindcss";
+@import "./styles/tokens.css";
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  color: var(--text-1);
+  font-family: var(--font-text);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  cursor: default;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+}
+
+.glyph {
+  font-family: var(--font-icons);
+  font-style: normal;
+  line-height: 1;
+}
+
+/* The capsule. The window is clipped to it, so everything outside is click-through. */
+
+.capsule {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.edge-strip {
+  position: absolute;
+  top: 0;
+  left: 490px;
+  width: 120px;
+  height: 3px;
+  pointer-events: auto;
+}
+
+.lift {
+  position: absolute;
+  inset: 0;
+  transform-origin: 550px 0;
+  transition: transform var(--shape-dur) var(--shape-ease);
+}
+
+.capsule.tucked .lift {
+  transform: translateY(var(--tuck));
+}
+
+/* A slot sits over one shape and moves with it as it stretches (Capsule.tsx). */
+.slot {
+  position: absolute;
+  top: 0;
+  transition: transform var(--shape-dur) var(--shape-ease);
+}
+
+.fill {
+  position: absolute;
+  inset: 0;
+  opacity: var(--cap-opacity);
+  filter: var(--cap-shadow);
+}
+
+.piece {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  background: var(--cap-solid);
+  pointer-events: auto;
+  transition: transform var(--shape-dur) var(--shape-ease);
+}
+
+.piece.body,
+.piece.strip {
+  width: 100px;
+  height: 100px;
+}
+
+.piece.corner-left,
+.piece.corner-right {
+  width: 32px;
+  height: 32px;
+}
+
+.piece.corner-left {
+  border-bottom-left-radius: 32px;
+}
+
+.piece.corner-right {
+  border-bottom-right-radius: 32px;
+}
+
+/* Shoulders curve the top corners out into the screen edge. One pixel wider than the
+   curve so they overlap the body instead of leaving a seam. */
+.piece.shoulder-left,
+.piece.shoulder-right {
+  width: 17px;
+  height: 16px;
+}
+
+.piece.shoulder-left {
+  mask: radial-gradient(circle at 0 100%, transparent 15.5px, #000 16px);
+}
+
+.piece.shoulder-right {
+  mask: radial-gradient(circle at 100% 100%, transparent 15.5px, #000 16px);
+}
+
+.piece.arch {
+  width: 26px;
+  height: 22px;
+  mask: radial-gradient(circle at 50% 100%, transparent 11.5px, #000 12px);
+}
+
+/* Content grows toward its final state; never from scale(0). */
+
+.content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+  animation: content-in var(--dur-normal) var(--ease-out) var(--content-delay) both;
+}
+
+@keyframes content-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.clock {
+  width: 100%;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  padding: 0 20px 0 18px;
+  text-align: left;
+}
+
+.item-icon {
+  flex: none;
+  font-size: 15px;
+}
+
+.item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.item-caption {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.state-running,
+.state-succeeded,
+.state-info {
+  color: var(--text-2);
+}
+
+.state-needs_input {
+  color: var(--accent);
+}
+
+.state-failed {
+  color: var(--text-1);
+}
+
+.bar {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: 5px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--track);
+}
+
+.bar-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  background: var(--accent);
+}
+
+/* Agents report no percentage: a short segment slides, beside the elapsed time. */
+.bar.indeterminate::after {
+  content: "";
+  position: absolute;
+  inset: 0 70% 0 0;
+  background: var(--accent);
+  animation: slide 1.6s linear infinite;
+}
+
+@keyframes slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+.bubble {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.bubble svg {
+  position: absolute;
+  transform: rotate(-90deg);
+}
+
+.ring-track,
+.ring-fill {
+  fill: none;
+  stroke-width: 2.5;
+}
+
+.ring-track {
+  stroke: var(--ring-track);
+}
+
+.ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+}
+
+.bubble-icon {
+  font-size: 11px;
+}
+
+.pop {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  padding: 0 12px 0 14px;
+}
+
+.pop-card {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  height: 100%;
+  text-align: left;
+}
+
+.app-tile {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-control);
+  background: var(--selection-strong);
+  color: var(--accent);
+  font-size: 16px;
+}
+
+.pop-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pop-title,
+.pop-detail {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pop-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pop-detail {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.pop-chevron {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.pop-secondary,
+.undo-button {
+  flex: none;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--r-control);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pop-secondary {
+  color: var(--accent);
+}
+
+.glyph-button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-control);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.pop-secondary:hover,
+.undo-button:hover,
+.glyph-button:hover {
+  background: var(--fill-hover);
+  color: var(--text-1);
+}
+
+.undo {
+  justify-content: space-between;
+  padding: 0 8px 0 22px;
+}
+
+.undo-text {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.undo-button {
+  font-size: 13px;
+  color: var(--text-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .piece,
+  .lift,
+  .slot {
+    transition: none;
+  }
+
+  .content {
+    animation: fade-in 120ms linear both;
+  }
+
+  .bar.indeterminate::after {
+    animation: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}

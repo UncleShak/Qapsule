@@ -12,9 +12,20 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Qapsule",
-        "width": 800,
-        "height": 600
+        "width": 1100,
+        "height": 260,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "shadow": false,
+        "focus": false,
+        "visible": false
       }
     ],
     "security": {

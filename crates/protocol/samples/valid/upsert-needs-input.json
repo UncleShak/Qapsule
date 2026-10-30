@@ -1,0 +1,1 @@
+{"v":1,"type":"upsert","activity":{"id":"cc-4821","source":"claude-code","title":"Claude needs your input","subtitle":"qapsule repo, session 4821","state":"needs_input","icon":"agent","actions":[{"id":"go","label":"Open terminal","kind":"focus_window","pid":4821,"primary":true},{"id":"x","label":"Dismiss","kind":"dismiss"}]}}

@@ -1,0 +1,1 @@
+{"v":1,"type":"upsert","activity":{"id":"a","source":"s","title":"x","state":"info","actions":[{"id":"1","label":"A","kind":"dismiss"},{"id":"2","label":"B","kind":"dismiss"},{"id":"3","label":"C","kind":"dismiss"}]}}

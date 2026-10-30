@@ -1,0 +1,1 @@
+{"v":1,"type":"upsert","activity":{"id":"build-1","source":"wrap","title":"cargo build --release","state":"running","progress":0.42,"icon":"build"}}

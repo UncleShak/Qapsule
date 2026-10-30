@@ -1,0 +1,29 @@
+[package]
+name = "qapsule-server"
+description = "Qapsule's named-pipe server, engine loop and action router"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+qapsule-core = { path = "../core" }
+qapsule-protocol = { path = "../protocol" }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+toml_edit = "0.25"
+
+[dependencies.windows]
+version = "0.62"
+features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread"] }
