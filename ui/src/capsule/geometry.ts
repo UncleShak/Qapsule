@@ -8,8 +8,6 @@ const SHADOW_SIDE = 8;
 const SHADOW_BELOW = 14;
 /** How much a shape stretches while the pointer is over it. The bubble stretches less. */
 const HOVER = { w: 20, h: 6, bubble: 6 };
-/** The strip at the top edge that brings a tucked capsule out on hover. */
-const STRIP = { w: 120, h: 3 };
 
 export interface Rect {
   x: number;
@@ -75,9 +73,11 @@ export function layout(kind: LayoutKind, hovered = false): Layout {
 }
 
 /** The area to keep clickable: the shapes at their hovered size, plus their shadow.
- *  Using the hovered size means hovering never has to change the window region. */
+ *  Using the hovered size means hovering never has to change the window region.
+ *  A tucked capsule has none: a small native strip at the top edge (Rust) brings it out,
+ *  and keeps working while this webview doesn't exist. */
 export function hitRects(kind: LayoutKind, tucked: boolean): Rect[] {
-  if (tucked) return [{ x: CENTRE - STRIP.w / 2, y: 0, w: STRIP.w, h: STRIP.h }];
+  if (tucked) return [];
   const l = layout(kind, true);
   const around = (b: Box): Rect => {
     const x = b.x - (b.left ? SHOULDER : 0) - SHADOW_SIDE;

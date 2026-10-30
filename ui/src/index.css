@@ -47,15 +47,6 @@ button {
   pointer-events: none;
 }
 
-.edge-strip {
-  position: absolute;
-  top: 0;
-  left: 490px;
-  width: 120px;
-  height: 3px;
-  pointer-events: auto;
-}
-
 .lift {
   position: absolute;
   inset: 0;

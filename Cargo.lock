@@ -2463,6 +2463,7 @@ dependencies = [
  "serde",
  "tauri",
  "tauri-build",
+ "tokio",
  "windows",
 ]
 

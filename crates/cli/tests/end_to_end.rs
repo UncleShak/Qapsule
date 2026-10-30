@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use qapsule_core::{Effect, Peek, Settings, UiState};
+use qapsule_core::{Effect, Peek, PresenceEffect, Settings, UiState};
 use qapsule_protocol::{ErrorCode, ServerMessage, decode_server};
 use qapsule_server::{Engine, Listener, Shell};
 
@@ -25,6 +25,7 @@ impl Shell for Recorder {
     fn run(&mut self, effect: Effect) {
         self.effects.lock().unwrap().push(effect);
     }
+    fn presence(&mut self, _effect: PresenceEffect) {}
 }
 
 struct Server {

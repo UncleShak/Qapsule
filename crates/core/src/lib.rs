@@ -2,6 +2,7 @@
 //! update coalescer. Plain Rust with no window and no real clock: every method
 //! that depends on time takes `now`, so tests can drive time by hand.
 
+pub mod presence;
 pub mod settings;
 pub mod store;
 pub mod timing;
@@ -11,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use qapsule_protocol::{ActionKind, Activity, ClientMessage, ServerMessage, State};
 
+pub use presence::{Presence, PresenceEffect};
 pub use settings::{PopSetting, Settings, VisibilityMode};
 pub use store::{Entry, Key, Store};
 pub use timing::{Coalescer, RateLimiter};
@@ -25,6 +27,9 @@ pub const POP_DURATION: Duration = Duration::from_secs(5);
 pub const UNDO_DURATION: Duration = Duration::from_secs(4);
 /// How long a hover-revealed peek stays after the pointer leaves.
 pub const HOVER_GRACE: Duration = Duration::from_millis(600);
+/// How long touching the top edge brings a tucked capsule out for. Long enough for
+/// a destroyed webview to come back and notice the pointer over it.
+pub const EDGE_REVEAL: Duration = Duration::from_secs(2);
 /// At most 4 UI updates per second, whatever clients send.
 pub const UI_UPDATE_INTERVAL: Duration = Duration::from_millis(250);
 /// Older pops waiting behind the current one are dropped past this.
@@ -75,6 +80,7 @@ pub struct Core {
     pointer_over: bool,
     hover_until: Option<Instant>,
     coalescer: Coalescer,
+    presence: Presence,
 }
 
 impl Core {
@@ -92,6 +98,7 @@ impl Core {
             pointer_over: false,
             hover_until: None,
             coalescer: Coalescer::new(UI_UPDATE_INTERVAL),
+            presence: Presence::new(),
         };
         core.coalescer.mark(now);
         core
@@ -293,6 +300,14 @@ impl Core {
         self.coalescer.mark(now);
     }
 
+    /// The pointer touched the strip at the top edge where a tucked capsule hides.
+    /// The capsule comes out for [`EDGE_REVEAL`], or for as long as the pointer is then over it.
+    pub fn reveal_from_edge(&mut self, now: Instant) {
+        let until = now + EDGE_REVEAL;
+        self.hover_until = Some(self.hover_until.map_or(until, |u| u.max(until)));
+        self.coalescer.mark(now);
+    }
+
     /// The hotkey was pressed: bring the capsule out, or let it go back.
     pub fn toggle_pinned(&mut self, now: Instant) {
         self.pinned = !self.pinned;
@@ -371,6 +386,7 @@ impl Core {
             self.undo.as_ref().map(|u| u.until),
             self.hover_until,
             self.coalescer.due(),
+            self.presence.next_deadline(),
         ]
         .into_iter()
         .flatten()
@@ -382,21 +398,44 @@ impl Core {
         self.coalescer.take(now).then(|| self.snapshot(now))
     }
 
+    /// What the window must do now that time has moved on and commands have run.
+    /// Window commands, not UI updates: they skip the coalescer. Call after
+    /// [`Core::tick`], which clears the timers that `shown` depends on.
+    pub fn take_presence(&mut self, now: Instant) -> Vec<PresenceEffect> {
+        let shown = self.shown();
+        let mut effects = self.presence.observe(shown, now);
+        effects.extend(self.presence.tick(now));
+        effects
+    }
+
+    /// The window reports that the webview is gone: asks for a new one if the
+    /// capsule should be on screen.
+    pub fn webview_gone(&mut self, now: Instant) -> Vec<PresenceEffect> {
+        self.presence.webview_gone(now)
+    }
+
+    /// Whether the capsule is on screen.
+    fn shown(&self) -> bool {
+        match self.settings.visibility {
+            VisibilityMode::Always => true,
+            VisibilityMode::Auto => !self.fullscreen || self.brought_out(),
+            VisibilityMode::OnDemand => self.brought_out(),
+        }
+    }
+
+    fn brought_out(&self) -> bool {
+        let hovering = self.pointer_over || self.hover_until.is_some();
+        !self.pops.is_empty() || self.undo.is_some() || self.pinned || hovering
+    }
+
     /// The full UI state right now, for a UI that has just started.
     pub fn snapshot(&self, now: Instant) -> UiState {
         let pop = self.pops.last().map(|p| self.pop_view(p));
         let undo = self.undo.is_some();
-        let hovering = self.pointer_over || self.hover_until.is_some();
-        let brought_out = pop.is_some() || undo || self.pinned || hovering;
-        let shown = match self.settings.visibility {
-            VisibilityMode::Always => true,
-            VisibilityMode::Auto => !self.fullscreen || brought_out,
-            VisibilityMode::OnDemand => brought_out,
-        };
         UiState {
             clock: self.clock.clone(),
             mode: self.settings.visibility,
-            shown,
+            shown: self.shown(),
             peek: self.peek(now),
             pop,
             undo,

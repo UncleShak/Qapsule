@@ -25,7 +25,8 @@
         "minimizable": false,
         "shadow": false,
         "focus": false,
-        "visible": false
+        "visible": false,
+        "create": false
       }
     ],
     "security": {

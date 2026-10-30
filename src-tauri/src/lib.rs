@@ -1,32 +1,42 @@
 //! The app shell: wires the engine and pipe server to the window, the tray and
 //! the watcher. Keep logic thin here; testable code lives in `crates/`.
 
+mod lifecycle;
+mod monitor;
 mod watcher;
 mod window;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use qapsule_core::{Effect, Settings, UiState, VisibilityMode};
+use qapsule_core::{Effect, PresenceEffect, Settings, UiState, VisibilityMode};
 use qapsule_server::{Engine, Listener, Shell, config, pipe_name, run_effect};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow, WindowEvent, Wry};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewWindow, Wry};
 
+use lifecycle::Lifecycle;
 use window::Rect;
 
-/// Sends the core's coalesced updates to the webview, if it exists.
+/// Sends the core's coalesced updates to the webview, and applies its presence
+/// effects: creating or destroying the webview as the capsule comes and goes.
 struct WindowShell {
     app: AppHandle,
+    lifecycle: Lifecycle,
 }
 
 impl Shell for WindowShell {
     fn update(&mut self, state: UiState) {
+        // Nothing to do if the webview doesn't exist: it asks for a snapshot when it starts.
         let _ = self.app.emit_to("main", "ui-state", state);
     }
 
     fn run(&mut self, effect: Effect) {
         run_effect(effect);
+    }
+
+    fn presence(&mut self, effect: PresenceEffect) {
+        self.lifecycle.apply(effect);
     }
 }
 
@@ -74,7 +84,17 @@ fn set_pointer(state: State<'_, AppState>, over: bool) {
 /// The UI reports where the capsule is drawn; everything else lets clicks through.
 #[tauri::command]
 fn set_hit_rects(window: WebviewWindow, rects: Vec<Rect>) {
+    if window::is_cleared() && !rects.is_empty() {
+        return;
+    }
     window::set_region(&window, &rects);
+}
+
+/// The webview no longer exists; the core decides whether to make another.
+fn webview_gone(app: &AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        state.engine.webview_gone();
+    }
 }
 
 fn set_mode(app: &AppHandle, mode: VisibilityMode) {
@@ -164,8 +184,10 @@ pub fn run() {
                 eprintln!("qapsule: {warning}");
             }
 
+            let lifecycle = Lifecycle::new(app.handle().clone());
             let shell = WindowShell {
                 app: app.handle().clone(),
+                lifecycle: lifecycle.clone(),
             };
             let pipe = pipe_name();
             let initial = settings.clone();
@@ -192,26 +214,26 @@ pub fn run() {
                 mode_items,
             });
 
-            let main = app
-                .get_webview_window("main")
-                .expect("the main window is in tauri.conf.json");
-            window::make_tool_window(&main);
-            window::hide_frame_painting(&main);
-            window::place(&main);
-            // Nothing is clickable until the UI says where the capsule is.
-            window::set_region(&main, &[]);
-            main.show()?;
-
-            let placed = main.clone();
-            watcher::spawn(engine, move || window::place(&placed));
-            let placed = main.clone();
-            main.on_window_event(move |event| {
-                if let WindowEvent::ScaleFactorChanged { .. } = event {
-                    window::place(&placed);
+            let handle = app.handle().clone();
+            watcher::spawn(engine, move || {
+                if let Some(main) = handle.get_webview_window("main") {
+                    window::place(&main);
                 }
             });
+            // The window is created (or not) by the lifecycle, now that commands can be answered.
+            lifecycle.start();
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            // Destroying the webview closes the last window; Qapsule keeps running
+            // until Quit in the tray menu.
+            if let RunEvent::ExitRequested {
+                code: None, api, ..
+            } = event
+            {
+                api.prevent_exit();
+            }
+        });
 }
