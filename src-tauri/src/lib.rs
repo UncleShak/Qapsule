@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use qapsule_core::{Effect, PresenceEffect, Settings, UiState, VisibilityMode};
+use qapsule_providers::calendar::{Calendar, CalendarConfig};
 use qapsule_providers::notifications::{Notifications, Status};
 use qapsule_providers::weather::Weather;
 use qapsule_server::{Engine, Listener, Shell, config, pipe_name, run_effect};
@@ -30,6 +31,7 @@ struct WindowShell {
     notifications: Arc<OnceLock<Notifications>>,
     /// Set once the engine exists, like `notifications`.
     weather: Arc<OnceLock<Weather>>,
+    calendar: Arc<OnceLock<Calendar>>,
     /// The last `focus` the core asked for.
     focused: bool,
     /// The window that had the foreground before the capsule took it.
@@ -82,6 +84,9 @@ impl Shell for WindowShell {
     fn main_screen(&mut self, visible: bool) {
         if let Some(weather) = self.weather.get() {
             weather.main_screen(visible);
+        }
+        if let Some(calendar) = self.calendar.get() {
+            calendar.main_screen(visible);
         }
     }
 }
@@ -272,23 +277,30 @@ pub fn run() {
             let lifecycle = Lifecycle::new(app.handle().clone());
             let notifications = Arc::new(OnceLock::new());
             let weather = Arc::new(OnceLock::new());
+            let calendar = Arc::new(OnceLock::new());
             let shell = WindowShell {
                 app: app.handle().clone(),
                 lifecycle: lifecycle.clone(),
                 notifications: notifications.clone(),
                 weather: weather.clone(),
+                calendar: calendar.clone(),
                 focused: false,
                 previous_foreground: None,
             };
             let pipe = pipe_name();
             let initial = settings.clone();
             let city = settings.weather_city().map(str::to_owned);
+            let calendar_config = CalendarConfig {
+                minutes_before: settings.calendar_minutes_before,
+                pops: settings.pop_setting("calendar:events").pop,
+            };
             let started = tauri::async_runtime::block_on(async move {
                 let listener = Listener::bind(&pipe)?;
                 let engine = Engine::spawn(initial, shell);
                 tauri::async_runtime::spawn(listener.run(engine.clone()));
                 // Starts its task on this runtime; nothing is fetched until the main screen opens.
                 let _ = weather.set(Weather::start(engine.clone(), city));
+                let _ = calendar.set(Calendar::start(engine.clone(), calendar_config));
                 Ok::<_, std::io::Error>(engine)
             });
             let engine = match started {

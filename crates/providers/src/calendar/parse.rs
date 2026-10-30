@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc};
-use rrule::{RRule, RRuleSet, Tz, Unvalidated};
+use rrule::{Frequency, RRule, RRuleSet, Tz, Unvalidated};
 
 /// Occurrences starting this long before now are kept (for events still running).
 const WINDOW_BEFORE_DAYS: i64 = 1;
@@ -13,7 +13,15 @@ const WINDOW_AFTER_DAYS: i64 = 8;
 /// At most this many occurrences are kept.
 pub const MAX_OCCURRENCES: usize = 2000;
 /// The most occurrences expanded from one recurring event.
-const MAX_PER_SERIES: u16 = 2000;
+const MAX_PER_SERIES: usize = 2000;
+/// The most occurrences expanded across the whole feed.
+const MAX_EXPANDED: usize = 10_000;
+/// The most events read from one feed.
+const MAX_EVENTS: usize = 5000;
+/// The most dates a rule may generate while searching for the window.
+const MAX_ITERATIONS: usize = 100_000;
+/// Logged when a limit cuts a feed short (fixed text only).
+const TOO_LARGE: &str = "qapsule: calendar too large; showing part of it";
 
 /// The text was not an iCal calendar.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -258,7 +266,8 @@ struct RawEvent {
     recurrence_id: Option<Prop>,
 }
 
-fn raw_events(text: &str) -> Vec<RawEvent> {
+/// The events of the feed (at most [`MAX_EVENTS`]) and whether some were left out.
+fn raw_events(text: &str) -> (Vec<RawEvent>, bool) {
     let mut events = Vec::new();
     let mut current: Option<RawEvent> = None;
     let mut nested = 0usize;
@@ -268,6 +277,9 @@ fn raw_events(text: &str) -> Vec<RawEvent> {
         };
         match (prop.name.as_str(), &mut current) {
             ("BEGIN", None) if prop.value.eq_ignore_ascii_case("VEVENT") => {
+                if events.len() >= MAX_EVENTS {
+                    return (events, true);
+                }
                 current = Some(RawEvent::default());
             }
             ("BEGIN", Some(_)) => nested += 1,
@@ -291,7 +303,7 @@ fn raw_events(text: &str) -> Vec<RawEvent> {
             _ => {}
         }
     }
-    events
+    (events, false)
 }
 
 /// How long one occurrence of the event lasts.
@@ -319,14 +331,17 @@ fn length(event: &RawEvent, start: &Moment, local: Tz) -> Duration {
     }
 }
 
-/// The starts of a recurring event around the window; `None` if the rule is unusable.
+/// The starts of a recurring event around the window, at most `room` of them,
+/// and whether that limit (or the search limit) cut the series short. `None` if
+/// the rule is unusable.
 fn expand(
     start: &Moment,
     rule: &str,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
     length: Duration,
-) -> Option<Vec<Moment>> {
+    room: usize,
+) -> Option<(Vec<Moment>, bool)> {
     let dt_start = match start {
         Moment::Time(t) => *t,
         // All-day series run in UTC so daylight saving can't shift the date.
@@ -334,20 +349,33 @@ fn expand(
     };
     let rule: RRule<Unvalidated> = rule.trim().parse().ok()?;
     let rule = rule.validate(dt_start).ok()?;
-    let set = RRuleSet::new(dt_start)
-        .rrule(rule)
-        .after((from - length - Duration::days(1)).with_timezone(&Tz::UTC))
-        .before((to + Duration::days(1)).with_timezone(&Tz::UTC));
-    let dates = set.all(MAX_PER_SERIES).dates;
-    Some(
-        dates
-            .into_iter()
-            .map(|d| match start {
-                Moment::Date(_) => Moment::Date(d.date_naive()),
-                Moment::Time(_) => Moment::Time(d),
-            })
-            .collect(),
-    )
+    // Every second or minute would only fill the list; show the first one.
+    if matches!(rule.get_freq(), Frequency::Secondly | Frequency::Minutely) {
+        return Some((vec![start.clone()], false));
+    }
+    let first = (from - length - Duration::days(1)).with_timezone(&Tz::UTC);
+    let last = (to + Duration::days(1)).with_timezone(&Tz::UTC);
+    let limit = MAX_PER_SERIES.min(room);
+    let set = RRuleSet::new(dt_start).rrule(rule);
+    let mut starts = Vec::new();
+    let mut cut = false;
+    for date in set.into_iter().take(MAX_ITERATIONS) {
+        if date > last {
+            break;
+        }
+        if date < first {
+            continue;
+        }
+        if starts.len() >= limit {
+            cut = true;
+            break;
+        }
+        starts.push(match start {
+            Moment::Date(_) => Moment::Date(date.date_naive()),
+            Moment::Time(_) => Moment::Time(date),
+        });
+    }
+    Some((starts, cut))
 }
 
 /// The occurrences of every event in the window `[now - 1 day, now + 8 days]`,
@@ -372,7 +400,8 @@ pub fn parse_calendar(
         from.with_timezone(&local).date_naive(),
         to.with_timezone(&local).date_naive(),
     );
-    let events = raw_events(text);
+    let (events, mut cut) = raw_events(text);
+    let mut expanded = 0usize;
 
     // Starts replaced by an override or cancelled, by event.
     let mut replaced: HashMap<&str, HashSet<Key>> = HashMap::new();
@@ -407,8 +436,16 @@ pub fn parse_calendar(
                     .map(|m| m.key())
                     .chain(replaced.get(uid.as_str()).into_iter().flatten().cloned())
                     .collect();
-                expand(&start, rule, from, to, len)
-                    .unwrap_or_else(|| vec![start.clone()])
+                let room = MAX_EXPANDED.saturating_sub(expanded);
+                if room == 0 {
+                    cut = true;
+                    continue;
+                }
+                let (starts, was_cut) = expand(&start, rule, from, to, len, room)
+                    .unwrap_or_else(|| (vec![start.clone()], false));
+                cut |= was_cut;
+                expanded += starts.len();
+                starts
                     .into_iter()
                     .filter(|m| !skipped.contains(&m.key()))
                     .collect()
@@ -442,7 +479,13 @@ pub fn parse_calendar(
         }
     }
     out.sort_by_key(|o| o.sort_key());
-    out.truncate(MAX_OCCURRENCES);
+    if out.len() > MAX_OCCURRENCES {
+        cut = true;
+        out.truncate(MAX_OCCURRENCES);
+    }
+    if cut {
+        eprintln!("{TOO_LARGE}");
+    }
     Ok(out)
 }
 
@@ -599,10 +642,55 @@ mod tests {
     }
 
     #[test]
-    fn a_long_series_is_capped_and_the_cap_holds() {
+    fn a_minutely_series_keeps_one_occurrence() {
         let text = calendar(
-            "BEGIN:VEVENT\r\nUID:a\r\nDTSTART:20250310T100000Z\r\nRRULE:FREQ=MINUTELY\r\nSUMMARY:Spam\r\nEND:VEVENT\r\n",
+            "BEGIN:VEVENT\r\nUID:a\r\nDTSTART:20250310T100000Z\r\nRRULE:FREQ=MINUTELY\r\nSUMMARY:Spam\r\nEND:VEVENT\r\n\
+             BEGIN:VEVENT\r\nUID:b\r\nDTSTART:20250310T100000Z\r\nRRULE:FREQ=SECONDLY\r\nSUMMARY:Worse\r\nEND:VEVENT\r\n",
         );
+        let all = parse_calendar(&text, JOBURG, utc("2025-03-10 08:00")).unwrap();
+        assert_eq!(titles(&all), vec!["Spam", "Worse"]);
+    }
+
+    #[test]
+    fn an_ancient_hourly_series_ends_quickly_inside_the_window() {
+        let text = calendar(
+            "BEGIN:VEVENT\r\nUID:a\r\nDTSTART:19000101T000000Z\r\nRRULE:FREQ=HOURLY\r\nSUMMARY:Old\r\nEND:VEVENT\r\n",
+        );
+        let began = std::time::Instant::now();
+        let now = utc("2025-03-10 08:00");
+        let all = parse_calendar(&text, JOBURG, now).unwrap();
+        assert!(began.elapsed() < std::time::Duration::from_secs(10));
+        assert!(all.len() <= MAX_OCCURRENCES);
+        // 100,000 hours from 1900 ends long before the window, so nothing is out of it.
+        for o in &all {
+            let Span::Timed { start, .. } = o.span else {
+                panic!("timed expected")
+            };
+            assert!(start >= now - Duration::days(2) && start <= now + Duration::days(10));
+        }
+    }
+
+    #[test]
+    fn a_feed_with_too_many_events_is_cut() {
+        let one =
+            "BEGIN:VEVENT\r\nUID:a\r\nDTSTART:20250310T100000Z\r\nSUMMARY:E\r\nEND:VEVENT\r\n";
+        let text = calendar(&one.repeat(MAX_EVENTS + 50));
+        let all = parse_calendar(&text, JOBURG, utc("2025-03-10 08:00")).unwrap();
+        assert_eq!(all.len(), MAX_OCCURRENCES);
+        let (events, cut) = raw_events(&text);
+        assert_eq!(events.len(), MAX_EVENTS);
+        assert!(cut);
+    }
+
+    #[test]
+    fn expansion_stops_at_the_feed_total() {
+        // Each daily series gives ~10 in-window dates; 1500 series would be 15,000.
+        let one = |n: usize| {
+            format!(
+                "BEGIN:VEVENT\r\nUID:u{n}\r\nDTSTART:20250301T100000Z\r\nRRULE:FREQ=DAILY\r\nSUMMARY:D\r\nEND:VEVENT\r\n"
+            )
+        };
+        let text = calendar(&(0..1500).map(one).collect::<String>());
         let all = parse_calendar(&text, JOBURG, utc("2025-03-10 08:00")).unwrap();
         assert_eq!(all.len(), MAX_OCCURRENCES);
     }

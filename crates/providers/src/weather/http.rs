@@ -20,7 +20,11 @@ pub struct Http {
 impl Http {
     pub fn new() -> Self {
         Self {
-            client: Client::builder().timeout(TIMEOUT).build().ok(),
+            client: Client::builder()
+                .timeout(TIMEOUT)
+                .https_only(true)
+                .build()
+                .ok(),
         }
     }
 

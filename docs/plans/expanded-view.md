@@ -142,6 +142,7 @@ bun run --cwd ui build
 - [ ] The hourly weather row has no per-hour glyph (to fit 128 px), unlike DESIGN.md's table. Confirm against the canvas.
 - [ ] The clock and actionless peek items are now buttons (Tab reaches them; in click mode they expand). Confirm.
 - [ ] New `--font-mono` token (for the `qapsule calendar set-link` hint): add it to DESIGN.md or drop it.
+- [ ] In Credential Manager (Generic credentials), delete any leftover `Qapsule/test-*` entries a failed test may have left.
 - [ ] Read decision 0007; push the branch when happy.
 - [ ] Note: the phase 1 commit alone (without phase 2) opens the view in the core but the old UI ignores it; test from the branch tip.
 
@@ -152,6 +153,7 @@ Filled in by Plato as gates pass.
 - **Phase 1 passed.** Socrates asked 5 questions, all fixed: a lost webview counts as the pointer leaving; hover behaves the same in every mode; the undo bar pauses while open; needs-input pops survive the pop-queue cap; a city change resets the weather view (cities over 100 characters are ignored). Archon approved; 91 core tests.
 - **Phase 2 passed** on the second gate. The first was rejected: closing could take focus from a window clicked since opening (now only gives focus back if the capsule still has it), and a reported glyph table was missing. Archon approved the fixes.
 - **Phase 3 passed.** Weather provider built in a parallel worktree, cherry-picked, wired by Plato. Archon approved; 20 provider tests, no network in tests, Schannel TLS only.
+- **Phase 4 passed** on the second gate. Built in a parallel worktree, cherry-picked, wired by Plato (timeout cut from 20 s to 10 s per decision 14). Socrates asked 5 questions: unbounded RRULE expansion and memory now capped (SECONDLY/MINUTELY keep one occurrence, 100,000 iterations per series, 5,000 events, 10,000 occurrences) with parsing on a blocking thread; redirects are HTTPS only; config reload and Outlook zone names deferred (reload doesn't exist yet). The first gate was rejected for flaky tests (the blocking parse raced the paused test clock); the parse runner is now injectable. Archon approved; providers suite 8/8 and 10/10 green.
 
 ## Deferred
 
@@ -160,3 +162,5 @@ Ideas found during the night that are not part of milestone 6.
 - Proper weather glyphs: Segoe Fluent Icons has no weather set; pick an icon source that follows DESIGN.md.
 - An unknown city is geocoded again on every open; consider caching "not found" per city.
 - The weather city is read once at start; it updates when config reload lands.
+- Config reload (milestone 6 tray item): when it lands, the weather city and `[notifications] calendar` (pops, `minutes_before`) must follow it; today they apply after a restart.
+- Outlook feeds with Windows time zone names (or custom VTIMEZONE) are read as local time; map Windows zone names or read VTIMEZONE.

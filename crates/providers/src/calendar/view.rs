@@ -131,6 +131,7 @@ pub fn build(occurrences: &[Occurrence], now: DateTime<Utc>, tz: Tz, stale: bool
 }
 
 /// The next local midnight after `now`.
+// The 1 h fallback covers days with no local midnight (DST at 00:00); it is accepted.
 pub fn next_midnight(now: DateTime<Utc>, tz: Tz) -> DateTime<Utc> {
     let tomorrow = now.with_timezone(&tz).date_naive() + Duration::days(1);
     tomorrow

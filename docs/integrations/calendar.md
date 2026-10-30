@@ -42,3 +42,7 @@ calendar = { pop = true, details = true, minutes_before = 10 }
 - `minutes_before`: from 1 to 120, default 10.
 
 All-day events show on the main screen but never pop.
+
+Changes to `[notifications] calendar` apply after restarting Qapsule.
+
+Outlook feeds that use Windows time zone names show events in your local time.

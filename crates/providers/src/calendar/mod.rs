@@ -87,6 +87,23 @@ impl LinkSource for Credentials {
 
 type Clock = Box<dyn Fn() -> DateTime<Utc> + Send>;
 
+/// A parse in flight: `None` if it stopped before finishing.
+type Parsing = std::pin::Pin<
+    Box<dyn std::future::Future<Output = Option<Result<Vec<Occurrence>, ParseError>>> + Send>,
+>;
+
+/// How the parse runs: `None` if it stopped before finishing.
+type Runner = fn(String, Tz, DateTime<Utc>) -> Parsing;
+
+/// Parses on a blocking thread, so a huge feed can't stall the runtime.
+fn run_blocking(body: String, tz: Tz, now: DateTime<Utc>) -> Parsing {
+    Box::pin(async move {
+        tokio::task::spawn_blocking(move || parse_calendar(&body, tz, now))
+            .await
+            .ok()
+    })
+}
+
 /// Where results go: the engine in the app, channels in tests.
 struct Out {
     view: Box<dyn Fn(EventsView) + Send>,
@@ -113,6 +130,7 @@ impl Calendar {
             out,
             Box::new(Utc::now),
             Tz::LOCAL,
+            run_blocking,
         )
         .0
     }
@@ -130,9 +148,10 @@ fn spawn<F: Fetcher, L: LinkSource>(
     out: Out,
     clock: Clock,
     tz: Tz,
+    runner: Runner,
 ) -> (Calendar, JoinHandle<()>) {
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut state = Provider::new(fetcher, links, config, out, clock, tz);
+    let mut state = Provider::new(fetcher, links, config, out, clock, tz, runner);
     let task = tokio::spawn(async move {
         if config.pops {
             state.tick().await;
@@ -179,6 +198,7 @@ struct Provider<F, L> {
     out: Out,
     clock: Clock,
     tz: Tz,
+    runner: Runner,
     visible: bool,
     /// The occurrences from the last good fetch.
     data: Option<Vec<Occurrence>>,
@@ -192,7 +212,15 @@ struct Provider<F, L> {
 }
 
 impl<F: Fetcher, L: LinkSource> Provider<F, L> {
-    fn new(fetcher: F, links: L, config: CalendarConfig, out: Out, clock: Clock, tz: Tz) -> Self {
+    fn new(
+        fetcher: F,
+        links: L,
+        config: CalendarConfig,
+        out: Out,
+        clock: Clock,
+        tz: Tz,
+        runner: Runner,
+    ) -> Self {
         Self {
             fetcher,
             links,
@@ -200,6 +228,7 @@ impl<F: Fetcher, L: LinkSource> Provider<F, L> {
             out,
             clock,
             tz,
+            runner,
             visible: false,
             data: None,
             no_link: false,
@@ -276,13 +305,19 @@ impl<F: Fetcher, L: LinkSource> Provider<F, L> {
                 return self.fail();
             }
         };
-        match parse_calendar(&body, self.tz, (self.clock)()) {
-            Ok(occurrences) => {
+        let (tz, now_utc) = (self.tz, (self.clock)());
+        let parsed = (self.runner)(body, tz, now_utc).await;
+        match parsed {
+            None => {
+                eprintln!("qapsule: calendar refresh failed (parser stopped)");
+                self.fail();
+            }
+            Some(Ok(occurrences)) => {
                 self.data = Some(occurrences);
                 self.failed = false;
                 self.last_success = Some(now_i);
             }
-            Err(error) => {
+            Some(Err(error)) => {
                 eprintln!("qapsule: calendar refresh failed ({})", error.0);
                 self.fail();
             }
@@ -502,6 +537,7 @@ mod tests {
             out,
             clock,
             JOBURG,
+            run_inline,
         );
         Harness {
             calendar,
@@ -510,6 +546,20 @@ mod tests {
             fake,
             link,
         }
+    }
+
+    /// Parses on the task itself, so paused-time tests stay deterministic.
+    fn run_inline(body: String, tz: Tz, now: DateTime<Utc>) -> Parsing {
+        Box::pin(async move { Some(parse_calendar(&body, tz, now)) })
+    }
+
+    #[tokio::test]
+    async fn the_blocking_runner_parses_to_completion() {
+        let text = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20250310T100000Z\r\nSUMMARY:One\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let parsed = run_blocking(text.into(), JOBURG, utc("2025-03-10 08:00")).await;
+        assert_eq!(parsed.unwrap().unwrap().len(), 1);
+        let junk = run_blocking("<html>".into(), JOBURG, utc("2025-03-10 08:00")).await;
+        assert!(junk.unwrap().is_err());
     }
 
     async fn settle() {

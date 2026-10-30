@@ -8,7 +8,7 @@ use reqwest::Client;
 
 use super::{FetchError, Fetcher};
 
-const TIMEOUT: Duration = Duration::from_secs(20);
+const TIMEOUT: Duration = Duration::from_secs(10);
 /// Larger responses are refused.
 pub const MAX_BYTES: usize = 5 * 1024 * 1024;
 
@@ -19,7 +19,11 @@ pub struct Http {
 impl Http {
     pub fn new() -> Self {
         Self {
-            client: Client::builder().timeout(TIMEOUT).build().ok(),
+            client: Client::builder()
+                .timeout(TIMEOUT)
+                .https_only(true)
+                .build()
+                .ok(),
         }
     }
 }

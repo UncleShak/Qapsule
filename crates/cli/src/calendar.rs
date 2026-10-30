@@ -15,6 +15,9 @@ pub enum CalendarCommand {
     Status,
 }
 
+/// Windows Credential Manager refuses longer secrets.
+const MAX_LINK: usize = 1000;
+
 /// Checks a pasted link: `https://` is kept, `webcal://` becomes `https://`,
 /// anything else is refused. The message never repeats the link.
 pub fn validate_link(input: &str) -> Result<String, String> {
@@ -24,6 +27,9 @@ pub fn validate_link(input: &str) -> Result<String, String> {
     }
     if link.chars().any(|c| c.is_control() || c.is_whitespace()) {
         return Err("that doesn't look like a link".into());
+    }
+    if link.len() > MAX_LINK {
+        return Err("That link is too long for Windows Credential Manager.".into());
     }
     let lower = link.to_ascii_lowercase();
     let rest = if lower.starts_with("https://") {
@@ -105,6 +111,18 @@ pub fn execute(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_link_over_1000_characters_is_refused() {
+        let at_limit = format!("https://example.com/{}", "a".repeat(1000 - 20));
+        assert_eq!(at_limit.len(), 1000);
+        assert!(validate_link(&at_limit).is_ok());
+        let error = validate_link(&format!("{at_limit}a")).unwrap_err();
+        assert_eq!(
+            error,
+            "That link is too long for Windows Credential Manager."
+        );
+    }
 
     #[test]
     fn https_links_are_kept_and_webcal_becomes_https() {

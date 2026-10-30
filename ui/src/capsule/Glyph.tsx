@@ -10,6 +10,7 @@ const GLYPHS: Record<string, string> = {
   error: "\uE783", // Error
   chevron: "\uE76C", // ChevronRight
   close: "\uE711", // Cancel
+  calendar: "\uE787", // Calendar
   // Weather. Segoe Fluent Icons has no weather set, so these are the closest shapes it has.
   clear: "\uE706", // Brightness
   partly_cloudy: "\uE753", // Cloud
