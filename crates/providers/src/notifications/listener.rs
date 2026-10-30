@@ -21,25 +21,63 @@ use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 use windows::core::{HSTRING, w};
 
+use super::status::Status;
 use super::toast::{ToastFields, to_activity};
 use super::tracked::{Tracked, aumid_to_open};
 
 pub struct Notifications {
     tracked: Arc<Mutex<Tracked>>,
+    status: Arc<Mutex<Status>>,
 }
 
 impl Notifications {
     /// Starts listening on its own thread. Does nothing visible if Windows says no.
-    pub fn start(engine: Engine) -> Notifications {
+    /// `on_status` is called once with the outcome, from the listener thread (or
+    /// from here if the thread can't start); it must not block for long.
+    pub fn start(engine: Engine, on_status: impl Fn(Status) + Send + 'static) -> Notifications {
         let tracked = Arc::new(Mutex::new(Tracked::default()));
+        let status = Arc::new(Mutex::new(Status::Starting));
+        let on_status = Mutex::new(on_status);
+        let report = Arc::new(move |s: Status| {
+            if let Ok(f) = on_status.lock() {
+                f(s);
+            }
+        });
+        let report_in_thread = report.clone();
         let shared = tracked.clone();
+        let shared_status = status.clone();
         let spawned = std::thread::Builder::new()
             .name("qapsule-notifications".into())
-            .spawn(move || listen(engine, shared));
+            .spawn(move || {
+                let publish = |s: Status| {
+                    if let Ok(mut current) = shared_status.lock() {
+                        *current = s;
+                    }
+                    report_in_thread(s);
+                };
+                listen(engine, shared, publish)
+            });
         if let Err(e) = spawned {
             eprintln!("qapsule: Windows notifications unavailable: thread ({e})");
+            if let Ok(mut current) = status.lock() {
+                *current = Status::Unavailable;
+            }
+            report(Status::Unavailable);
         }
-        Notifications { tracked }
+        Notifications { tracked, status }
+    }
+
+    /// The latest status the listener reported.
+    pub fn status(&self) -> Status {
+        self.status
+            .lock()
+            .map(|s| *s)
+            .unwrap_or(Status::Unavailable)
+    }
+
+    /// Opens Windows' notification privacy page, where access can be allowed.
+    pub fn open_settings(&self) {
+        open("ms-settings:privacy-notifications".to_string());
     }
 
     /// Runs a button the user pressed. Only `open` exists; anything else is ignored.
@@ -51,29 +89,36 @@ impl Notifications {
         let Some(aumid) = aumid else {
             return;
         };
-        // Off the caller's thread, so the engine never waits on the shell.
-        let _ = std::thread::Builder::new()
-            .name("qapsule-open-app".into())
-            .spawn(move || {
-                let target = HSTRING::from(format!("shell:AppsFolder\\{aumid}"));
-                unsafe {
-                    let com =
-                        CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)
-                            .is_ok();
-                    ShellExecuteW(None, w!("open"), &target, None, None, SW_SHOWNORMAL);
-                    if com {
-                        CoUninitialize();
-                    }
-                }
-            });
+        open(format!("shell:AppsFolder\\{aumid}"));
     }
 }
 
-fn listen(engine: Engine, tracked: Arc<Mutex<Tracked>>) {
+/// Launches a shell target off the caller's thread, so the engine never waits on the shell.
+fn open(target: String) {
+    let _ = std::thread::Builder::new()
+        .name("qapsule-open-app".into())
+        .spawn(move || {
+            let target = HSTRING::from(target);
+            unsafe {
+                let com =
+                    CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE).is_ok();
+                ShellExecuteW(None, w!("open"), &target, None, None, SW_SHOWNORMAL);
+                if com {
+                    CoUninitialize();
+                }
+            }
+        });
+}
+
+fn listen(engine: Engine, tracked: Arc<Mutex<Tracked>>, publish: impl Fn(Status)) {
     unsafe {
         // Already-initialised is fine; the result is not needed.
         let _ = RoInitialize(RO_INIT_MULTITHREADED);
     }
+    let unavailable = |reason: String| {
+        eprintln!("qapsule: Windows notifications unavailable: {reason}");
+        publish(Status::Unavailable);
+    };
     let listener = match UserNotificationListener::Current() {
         Ok(l) => l,
         Err(e) => return unavailable(format!("{}", e.code())),
@@ -89,7 +134,18 @@ fn listen(engine: Engine, tracked: Arc<Mutex<Tracked>>) {
         };
     }
     if status != UserNotificationListenerAccessStatus::Allowed {
-        return unavailable(format!("access status {}", status.0));
+        eprintln!(
+            "qapsule: Windows notifications unavailable: access status {}",
+            status.0
+        );
+        let denied = status == UserNotificationListenerAccessStatus::Denied
+            || status == UserNotificationListenerAccessStatus::Unspecified;
+        publish(if denied {
+            Status::NeedsPermission
+        } else {
+            Status::Unavailable
+        });
+        return;
     }
 
     // The handler only queues events; everything else happens below, in order.
@@ -107,6 +163,7 @@ fn listen(engine: Engine, tracked: Arc<Mutex<Tracked>>) {
         Ok(token) => token,
         Err(e) => return unavailable(format!("{}", e.code())),
     };
+    publish(Status::On);
     // `listener`, `handler` and `token` stay alive for as long as this loop runs.
     for (kind, id) in rx {
         if let Err(e) = process(&engine, &tracked, &listener, kind, id) {
@@ -115,10 +172,6 @@ fn listen(engine: Engine, tracked: Arc<Mutex<Tracked>>) {
     }
     let _ = listener.RemoveNotificationChanged(token);
     drop(handler);
-}
-
-fn unavailable(reason: String) {
-    eprintln!("qapsule: Windows notifications unavailable: {reason}");
 }
 
 fn queue(tx: &Sender<(UserNotificationChangedKind, u32)>, args: &UserNotificationChangedEventArgs) {

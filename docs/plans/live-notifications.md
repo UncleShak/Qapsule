@@ -48,7 +48,7 @@ Commission → aristotle:
 Checks the student must report (these are the spike's open risks):
 1. With the package registered: identity present, `NotificationChanged` subscribes without `0x80070490`.
 2. With it **unregistered**: the app still starts and runs normally (the GitHub installer must not break).
-3. `%APPDATA%\Qynetik\Capsule\config.toml` is still read and written at the real path (no virtualisation).
+3. `%APPDATA%\Qynetik\Qapsule\config.toml` is still read and written at the real path (no virtualisation).
 
 Archon does by hand: turn on Developer Mode and run `register-identity.ps1`. Only for the `-Signed` fallback (needs admin): import the `.cer` into `LocalMachine\TrustedPeople` with `trust-dev-cert.ps1`.
 

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use qapsule_core::{Effect, PresenceEffect, Settings, UiState, VisibilityMode};
-use qapsule_providers::notifications::Notifications;
+use qapsule_providers::notifications::{Notifications, Status};
 use qapsule_server::{Engine, Listener, Shell, config, pipe_name, run_effect};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
@@ -126,10 +126,13 @@ fn set_mode(app: &AppHandle, mode: VisibilityMode) {
     }
 }
 
+type ModeItems = Vec<(VisibilityMode, CheckMenuItem<Wry>)>;
+
 fn build_tray(
     app: &tauri::App,
     current: VisibilityMode,
-) -> tauri::Result<Vec<(VisibilityMode, CheckMenuItem<Wry>)>> {
+    notifications: Arc<OnceLock<Notifications>>,
+) -> tauri::Result<(ModeItems, MenuItem<Wry>)> {
     let modes = [
         (VisibilityMode::Auto, "Auto"),
         (VisibilityMode::Always, "Always show"),
@@ -150,16 +153,34 @@ fn build_tray(
     let refs: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = items.iter().map(|(_, i)| i as _).collect();
     let visibility = Submenu::with_items(app, "Visibility", true, &refs)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Qapsule", true, None::<&str>)?;
+    let status = MenuItem::with_id(
+        app,
+        "windows-notifications",
+        Status::Starting.label(),
+        false,
+        None::<&str>,
+    )?;
     let menu = Menu::with_items(
         app,
-        &[&visibility, &PredefinedMenuItem::separator(app)?, &quit],
+        &[
+            &status,
+            &PredefinedMenuItem::separator(app)?,
+            &visibility,
+            &PredefinedMenuItem::separator(app)?,
+            &quit,
+        ],
     )?;
 
     let mut tray = TrayIconBuilder::with_id("qapsule")
         .tooltip("Qapsule")
         .menu(&menu)
-        .on_menu_event(|app, event| match event.id.as_ref() {
+        .on_menu_event(move |app, event| match event.id.as_ref() {
             "quit" => app.exit(0),
+            "windows-notifications" => {
+                if let Some(notifications) = notifications.get() {
+                    notifications.open_settings();
+                }
+            }
             id => {
                 if let Some(mode) = VisibilityMode::parse(id) {
                     set_mode(app, mode);
@@ -170,7 +191,7 @@ fn build_tray(
         tray = tray.icon(icon.clone());
     }
     tray.build(app)?;
-    Ok(items)
+    Ok((items, status))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -219,9 +240,13 @@ pub fn run() {
                 }
             };
 
-            let _ = notifications.set(Notifications::start(engine.clone()));
-
-            let mode_items = build_tray(app, settings.visibility)?;
+            let (mode_items, status_item) =
+                build_tray(app, settings.visibility, notifications.clone())?;
+            // Only an unmet permission is actionable; the rest is information.
+            let _ = notifications.set(Notifications::start(engine.clone(), move |status| {
+                let _ = status_item.set_text(status.label());
+                let _ = status_item.set_enabled(status == Status::NeedsPermission);
+            }));
             app.manage(AppState {
                 engine: engine.clone(),
                 settings: Mutex::new(settings),
