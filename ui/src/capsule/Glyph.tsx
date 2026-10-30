@@ -10,11 +10,20 @@ const GLYPHS: Record<string, string> = {
   error: "\uE783", // Error
   chevron: "\uE76C", // ChevronRight
   close: "\uE711", // Cancel
+  // Weather. Segoe Fluent Icons has no weather set, so these are the closest shapes it has.
+  clear: "\uE706", // Brightness
+  partly_cloudy: "\uE753", // Cloud
+  cloudy: "\uE753", // Cloud
+  fog: "\uE753", // Cloud
+  drizzle: "\uEB42", // Drop
+  rain: "\uEB42", // Drop
+  snow: "\u2744\uFE0E", // Unicode snowflake, text form (not in the icon font)
+  storm: "\uE945", // LightningBolt
 };
 
 export function Glyph({ name, className = "" }: { name: string; className?: string }) {
   return (
-    <span className={`glyph ${className}`} aria-hidden="true">
+    <span className={`glyph ${name === "storm" ? "glyph-warning" : ""} ${className}`} aria-hidden="true">
       {GLYPHS[name] ?? GLYPHS.info}
     </span>
   );

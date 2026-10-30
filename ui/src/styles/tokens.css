@@ -27,9 +27,13 @@
   --selection: color-mix(in srgb, var(--accent) 14%, transparent);
   --selection-strong: color-mix(in srgb, var(--accent) 18%, transparent);
 
+  /* Semantic */
+  --warning: #fce100; /* weather lightning only */
+
   /* Type */
   --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   --font-text: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --font-icons: "Segoe Fluent Icons", "Segoe MDL2 Assets";
 
   /* Shape */

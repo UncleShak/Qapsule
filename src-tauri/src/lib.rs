@@ -27,12 +27,38 @@ struct WindowShell {
     lifecycle: Lifecycle,
     /// Set once the engine exists; the shell is built before it.
     notifications: Arc<OnceLock<Notifications>>,
+    /// The last `focus` the core asked for.
+    focused: bool,
+    /// The window that had the foreground before the capsule took it.
+    previous_foreground: Option<isize>,
+}
+
+impl WindowShell {
+    /// The hotkey opened the view: take focus, remembering who had it. Closing gives it back.
+    fn follow_focus(&mut self, focus: bool) {
+        if focus == self.focused {
+            return;
+        }
+        if focus {
+            if let Some(main) = self.app.get_webview_window("main") {
+                self.focused = true;
+                self.previous_foreground = window::take_focus(&main);
+            }
+        } else {
+            self.focused = false;
+            if let Some(previous) = self.previous_foreground.take() {
+                window::give_back_focus(self.app.get_webview_window("main").as_ref(), previous);
+            }
+        }
+    }
 }
 
 impl Shell for WindowShell {
     fn update(&mut self, state: UiState) {
+        let focus = state.focus;
         // Nothing to do if the webview doesn't exist: it asks for a snapshot when it starts.
         let _ = self.app.emit_to("main", "ui-state", state);
+        self.follow_focus(focus);
     }
 
     fn run(&mut self, effect: Effect) {
@@ -50,6 +76,7 @@ impl Shell for WindowShell {
         self.lifecycle.apply(effect);
     }
 
+    // Phases 3 and 4 hand this to the weather and calendar providers.
     fn main_screen(&mut self, _visible: bool) {}
 }
 
@@ -77,6 +104,21 @@ fn press_action(state: State<'_, AppState>, source: String, id: String, action: 
 #[tauri::command]
 fn dismiss_pop(state: State<'_, AppState>) {
     state.engine.dismiss_pop();
+}
+
+#[tauri::command]
+fn pointer_slowed(state: State<'_, AppState>) {
+    state.engine.pointer_slowed();
+}
+
+#[tauri::command]
+fn expand_click(state: State<'_, AppState>) {
+    state.engine.expand_click();
+}
+
+#[tauri::command]
+fn close_expanded(state: State<'_, AppState>) {
+    state.engine.close_expanded();
 }
 
 #[tauri::command]
@@ -206,6 +248,9 @@ pub fn run() {
             undo,
             swap_peek,
             set_pointer,
+            pointer_slowed,
+            expand_click,
+            close_expanded,
             set_hit_rects
         ])
         .setup(|app| {
@@ -224,6 +269,8 @@ pub fn run() {
                 app: app.handle().clone(),
                 lifecycle: lifecycle.clone(),
                 notifications: notifications.clone(),
+                focused: false,
+                previous_foreground: None,
             };
             let pipe = pipe_name();
             let initial = settings.clone();

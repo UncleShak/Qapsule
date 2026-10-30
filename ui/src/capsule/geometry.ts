@@ -22,11 +22,13 @@ export interface Box {
   w: number;
   h: number;
   r: number;
+  /** The radius of the curve joining a top corner to the screen edge. */
+  shoulder: number;
   left: boolean;
   right: boolean;
 }
 
-export type LayoutKind = "idle" | "one" | "dual" | "pop" | "undo";
+export type LayoutKind = "idle" | "one" | "dual" | "pop" | "undo" | "expanded";
 
 export interface Layout {
   kind: LayoutKind;
@@ -39,19 +41,24 @@ export interface Layout {
   dual: boolean;
 }
 
-function centred(w: number, h: number): Box {
-  return { x: CENTRE - w / 2, w, h, r: h / 2 > 28 ? 28 : h / 2, left: true, right: true };
+function centred(w: number, h: number, r = h / 2 > 28 ? 28 : h / 2, shoulder = SHOULDER): Box {
+  return { x: CENTRE - w / 2, w, h, r, shoulder, left: true, right: true };
 }
 
-const SIZES: Record<Exclude<LayoutKind, "dual">, [number, number]> = {
+const SIZES: Record<Exclude<LayoutKind, "dual" | "expanded">, [number, number]> = {
   idle: [120, 36],
   one: [280, 44],
   pop: [340, 64],
   undo: [300, 44],
 };
 
-/** The shapes for a state. `hovered` stretches them a little wider and taller. */
+/** The shapes for a state. `hovered` stretches the peek shapes a little wider and taller;
+ *  the expanded capsule never stretches. */
 export function layout(kind: LayoutKind, hovered = false): Layout {
+  if (kind === "expanded") {
+    const main = centred(1000, 176, 32, 24);
+    return { kind, main, side: main, archX: CENTRE - 12, dual: false };
+  }
   const dw = hovered ? HOVER.w : 0;
   const dh = hovered ? HOVER.h : 0;
   if (kind === "dual") {
@@ -61,13 +68,13 @@ export function layout(kind: LayoutKind, hovered = false): Layout {
     const x = CENTRE - (pill + 24 + bubble) / 2;
     return {
       kind,
-      main: { x, w: pill, h, r: h / 2, left: true, right: false },
-      side: { x: x + pill + 24, w: bubble, h: bubble, r: bubble / 2, left: false, right: true },
+      main: { x, w: pill, h, r: h / 2, shoulder: SHOULDER, left: true, right: false },
+      side: { x: x + pill + 24, w: bubble, h: bubble, r: bubble / 2, shoulder: SHOULDER, left: false, right: true },
       archX: x + pill,
       dual: true,
     };
   }
-  const [w, h] = SIZES[kind];
+  const [w, h] = SIZES[kind as Exclude<LayoutKind, "dual" | "expanded">];
   const main = centred(w + dw, h + dh);
   return { kind, main, side: main, archX: CENTRE - 12, dual: false };
 }
@@ -80,8 +87,8 @@ export function hitRects(kind: LayoutKind, tucked: boolean): Rect[] {
   if (tucked) return [];
   const l = layout(kind, true);
   const around = (b: Box): Rect => {
-    const x = b.x - (b.left ? SHOULDER : 0) - SHADOW_SIDE;
-    const right = b.x + b.w + (b.right ? SHOULDER : 0) + SHADOW_SIDE;
+    const x = b.x - (b.left ? b.shoulder : 0) - SHADOW_SIDE;
+    const right = b.x + b.w + (b.right ? b.shoulder : 0) + SHADOW_SIDE;
     return { x, y: 0, w: right - x, h: b.h + SHADOW_BELOW };
   };
   // One rect across both parts of a dual peek, so the gap under the arch isn't cut away.

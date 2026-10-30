@@ -2,15 +2,17 @@
 // It holds no state of its own beyond what animation needs.
 
 import { type CSSProperties, type ReactNode, type TransitionEvent, useEffect, useRef, useState } from "react";
-import { dismissPop, press, setHitRects, swapPeek, undo } from "../bridge";
+import { dismissPop, expandClick, press, setHitRects, swapPeek, undo } from "../bridge";
 import type { ItemView, PopView, UiState } from "../types";
 import { Arch, Shape } from "./Shape";
 import { Glyph, stateGlyph } from "./Glyph";
+import { Expanded } from "../widgets/Expanded";
 import { type Box, type Layout, type LayoutKind, type Rect, hitRects, layout, union } from "./geometry";
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function kindOf(state: UiState): LayoutKind {
+  if (state.expanded) return "expanded";
   if (state.pop) return "pop";
   if (state.undo) return "undo";
   if (state.peek.kind === "one") return "one";
@@ -35,8 +37,10 @@ function motion(from: Shown | null, to: Shown): [string, number] {
 
 function change(from: LayoutKind | null, to: LayoutKind, replaced: boolean): [string, number] {
   if (from === to) return replaced ? ["--spring-replace", 220] : ["--spring-settle", 180];
+  if (to === "expanded") return ["--spring-expand", 280];
+  if (from === "expanded") return ["--spring-collapse", 220];
   if (to === "pop") return from === "undo" ? ["--spring-replace", 220] : ["--spring-pop", 240];
-  const size = (k: LayoutKind) => ({ idle: 0, one: 1, dual: 1, undo: 2, pop: 3 })[k];
+  const size = (k: LayoutKind) => ({ idle: 0, one: 1, dual: 1, undo: 2, pop: 3, expanded: 4 })[k];
   if (from !== null && size(to) > size(from)) return ["--spring-grow", 220];
   return ["--spring-settle", 180];
 }
@@ -58,7 +62,8 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
     };
   }, []);
   const tucked = !state.shown || !entered;
-  const stretched = hovered && !tucked;
+  // The expanded capsule never stretches.
+  const stretched = hovered && !tucked && kind !== "expanded";
   // The shape stretches on hover; the content keeps its size and place.
   const l = layout(kind, stretched);
   const base = layout(kind);
@@ -148,6 +153,13 @@ function Slot({ rest, now, className = "", children }: { rest: Box; now: Box; cl
 
 function Content({ state, rest, now }: { state: UiState; rest: Layout; now: Layout }) {
   // A new key remounts the content, which replays its entrance.
+  if (state.expanded) {
+    return (
+      <Slot rest={rest.main} now={now.main} className="expanded" key="expanded">
+        <Expanded state={state} expanded={state.expanded} />
+      </Slot>
+    );
+  }
   if (state.pop) {
     return (
       <Slot rest={rest.main} now={now.main} key={`pop-${state.pop.seq}`}>
@@ -168,7 +180,9 @@ function Content({ state, rest, now }: { state: UiState; rest: Layout; now: Layo
   if (state.peek.kind === "idle") {
     return (
       <Slot rest={rest.main} now={now.main} key="idle">
-        <span className="clock">{state.clock}</span>
+        <button type="button" className="clock" onClick={() => expandClick()}>
+          {state.clock}
+        </button>
       </Slot>
     );
   }
@@ -216,7 +230,10 @@ function Item({ item }: { item: ItemView }) {
       {inner}
     </button>
   ) : (
-    <div className="item">{inner}</div>
+    // No action of its own: a click opens the expanded view (the core ignores it in hover mode).
+    <button type="button" className="item" onClick={() => expandClick()}>
+      {inner}
+    </button>
   );
 }
 

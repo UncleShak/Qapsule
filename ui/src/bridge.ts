@@ -30,4 +30,7 @@ export const dismissPop = () => invoke("dismiss_pop");
 export const undo = () => invoke("undo");
 export const swapPeek = () => invoke("swap_peek");
 export const setPointer = (over: boolean) => invoke("set_pointer", { over });
+export const pointerSlowed = () => invoke("pointer_slowed");
+export const expandClick = () => invoke("expand_click");
+export const closeExpanded = () => invoke("close_expanded");
 export const setHitRects = (rects: Rect[]) => invoke("set_hit_rects", { rects });

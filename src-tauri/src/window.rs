@@ -12,8 +12,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    DefWindowProcW, GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WM_NCACTIVATE, WM_NCPAINT,
-    WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    DefWindowProcW, GWL_EXSTYLE, GetForegroundWindow, GetWindowLongPtrW, IsWindow,
+    SetForegroundWindow, SetWindowLongPtrW, WM_NCACTIVATE, WM_NCPAINT, WS_EX_APPWINDOW,
+    WS_EX_TOOLWINDOW,
 };
 
 use crate::monitor;
@@ -150,6 +151,33 @@ pub fn set_region(window: &WebviewWindow, rects: &[Rect]) {
         // On success the system owns the region.
         if SetWindowRgn(hwnd, Some(region), true) == 0 {
             let _ = DeleteObject(region.into());
+        }
+    }
+}
+
+/// Brings the capsule window forward and gives it keyboard focus. Returns the window
+/// that had the foreground before (as a number, so it can be kept across threads),
+/// unless that was this window or there was none.
+pub fn take_focus(window: &WebviewWindow) -> Option<isize> {
+    let own = hwnd(window);
+    let previous = unsafe { GetForegroundWindow() };
+    let _ = window.set_focus();
+    if previous.0.is_null() || Some(previous) == own {
+        None
+    } else {
+        Some(previous.0 as isize)
+    }
+}
+
+/// Puts the foreground back on `previous` (from `take_focus`), but only if that window
+/// still exists and the capsule still holds the foreground: if the user has clicked
+/// into another app meanwhile, that app keeps it.
+pub fn give_back_focus(window: Option<&WebviewWindow>, previous: isize) {
+    let target = HWND(previous as *mut std::ffi::c_void);
+    let own = window.and_then(hwnd);
+    unsafe {
+        if own.is_some_and(|own| GetForegroundWindow() == own) && IsWindow(Some(target)).as_bool() {
+            let _ = SetForegroundWindow(target);
         }
     }
 }

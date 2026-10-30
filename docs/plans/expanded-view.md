@@ -137,6 +137,11 @@ bun run --cwd ui build
 - [ ] A "starts in 10 minutes" pop for a test event.
 - [ ] `scripts/measure-idle.ps1`: idle CPU and memory still within budget.
 - [ ] 150% and 200% scaling.
+- [ ] Hotkey: open, click into another app, press the hotkey again: that app keeps focus. Open, press Esc: focus returns to where you were.
+- [ ] Weather glyphs are approximations (Segoe Fluent Icons has no weather set): clear = Brightness, one Cloud for partly cloudy/cloudy/fog, Drop for rain, a Unicode snowflake. Check them and the snowflake's size and baseline.
+- [ ] The hourly weather row has no per-hour glyph (to fit 128 px), unlike DESIGN.md's table. Confirm against the canvas.
+- [ ] The clock and actionless peek items are now buttons (Tab reaches them; in click mode they expand). Confirm.
+- [ ] New `--font-mono` token (for the `qapsule calendar set-link` hint): add it to DESIGN.md or drop it.
 - [ ] Read decision 0007; push the branch when happy.
 - [ ] Note: the phase 1 commit alone (without phase 2) opens the view in the core but the old UI ignores it; test from the branch tip.
 
@@ -145,6 +150,7 @@ bun run --cwd ui build
 Filled in by Plato as gates pass.
 
 - **Phase 1 passed.** Socrates asked 5 questions, all fixed: a lost webview counts as the pointer leaving; hover behaves the same in every mode; the undo bar pauses while open; needs-input pops survive the pop-queue cap; a city change resets the weather view (cities over 100 characters are ignored). Archon approved; 91 core tests.
+- **Phase 2 passed** on the second gate. The first was rejected: closing could take focus from a window clicked since opening (now only gives focus back if the capsule still has it), and a reported glyph table was missing. Archon approved the fixes.
 
 ## Deferred
 

@@ -49,4 +49,58 @@ export interface UiState {
   peek: Peek;
   pop: PopView | null;
   undo: boolean;
+  expanded: ExpandedView | null;
+  focus: boolean;
 }
+
+export interface ExpandedView {
+  date: string;
+  weather: WeatherView;
+  events: EventsView;
+}
+
+export interface HourView {
+  label: string;
+  temp_c: number;
+  glyph: string;
+}
+
+export interface WeatherReady {
+  city: string;
+  temp_c: number;
+  condition: string;
+  glyph: string;
+  high_c: number;
+  low_c: number;
+  hourly: HourView[];
+  stale: boolean;
+}
+
+export type WeatherView =
+  | { kind: "no_city" }
+  | { kind: "loading" }
+  | ({ kind: "ready" } & WeatherReady)
+  | { kind: "unavailable" };
+
+export interface EventNow {
+  title: string;
+  until: string;
+  location: string | null;
+}
+
+export interface EventNext {
+  title: string;
+  when: string;
+}
+
+export interface EventsReady {
+  now: EventNow | null;
+  next: EventNext[];
+  stale: boolean;
+}
+
+export type EventsView =
+  | { kind: "no_link" }
+  | { kind: "loading" }
+  | ({ kind: "ready" } & EventsReady)
+  | { kind: "unavailable" };
