@@ -2459,6 +2459,7 @@ name = "qapsule-app"
 version = "0.0.1"
 dependencies = [
  "qapsule-core",
+ "qapsule-providers",
  "qapsule-server",
  "serde",
  "tauri",
@@ -2495,6 +2496,15 @@ version = "0.0.1"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "qapsule-providers"
+version = "0.0.1"
+dependencies = [
+ "qapsule-protocol",
+ "qapsule-server",
+ "windows",
 ]
 
 [[package]]

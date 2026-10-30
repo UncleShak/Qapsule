@@ -42,6 +42,27 @@ pub mod limits {
     pub const FINISHED_LIFETIME_SECS: u64 = 4;
 }
 
+/// Source prefixes that belong to Qapsule's own providers. Pipe clients may not
+/// `upsert` or `end` activities in them.
+pub const RESERVED_SOURCE_PREFIXES: &[&str] = &["windows:"];
+
+/// Whether `source` starts with a reserved prefix.
+pub fn is_reserved_source(source: &str) -> bool {
+    reserved_prefix(source).is_some()
+}
+
+/// Icons only Qapsule's own providers may use.
+pub(crate) const RESERVED_ICONS: &[&str] = &["app"];
+
+/// The reserved prefix `source` starts with, ignoring ASCII case, if any.
+pub(crate) fn reserved_prefix(source: &str) -> Option<&'static str> {
+    RESERVED_SOURCE_PREFIXES.iter().copied().find(|p| {
+        source
+            .get(..p.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(p))
+    })
+}
+
 /// Why a message was refused. Sent to the client as an `error` message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

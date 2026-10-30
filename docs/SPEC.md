@@ -302,6 +302,8 @@ music        = { pop = true,  details = true }   # song-change pop
 calendar     = { pop = true,  details = true, minutes_before = 10 }
 downloads    = { pop = false }
 windows_apps = { pop = true,  details = false }  # needs Windows permission
+"windows:WhatsApp"        = { pop = true, details = true }   # per app: spaces become dashes
+"windows:Microsoft-Teams" = { pop = false }
 
 [[screens]]   # left: your widgets
 widgets = [

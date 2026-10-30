@@ -10,7 +10,10 @@ pub mod view;
 
 use std::time::{Duration, Instant};
 
-use qapsule_protocol::{ActionKind, Activity, ClientMessage, ServerMessage, State};
+use qapsule_protocol::{
+    ActionKind, Activity, ClientMessage, ErrorCode, ProtocolError, ServerMessage, State,
+    is_reserved_source,
+};
 
 pub use presence::{Presence, PresenceEffect};
 pub use settings::{PopSetting, Settings, VisibilityMode};
@@ -40,6 +43,12 @@ const MAX_POPS: usize = 8;
 pub enum Effect {
     OpenUrl(String),
     FocusWindow(u32),
+    /// A button on a provider activity: the engine hands it to the provider.
+    Provider {
+        source: String,
+        id: String,
+        action: String,
+    },
     /// Send `message` to the pipe connection `conn`.
     Callback {
         conn: ConnId,
@@ -117,7 +126,12 @@ impl Core {
         match message {
             ClientMessage::Hello { .. } => ServerMessage::Ok,
             ClientMessage::List { source } => ServerMessage::ListResult {
-                activities: self.store.list(source.as_deref(), now),
+                activities: self
+                    .store
+                    .list(source.as_deref(), now)
+                    .into_iter()
+                    .map(|a| self.hide_text(a))
+                    .collect(),
             },
             ClientMessage::Upsert { activity } => {
                 let key = store::key_of(&activity);
@@ -152,6 +166,73 @@ impl Core {
                 ServerMessage::Ok
             }
         }
+    }
+
+    /// Adds or updates an activity from an in-process provider. Only reserved
+    /// sources are accepted. At the per-source limit the oldest activity of the
+    /// source makes room.
+    pub fn provider_upsert(
+        &mut self,
+        activity: Activity,
+        now: Instant,
+    ) -> Result<(), ProtocolError> {
+        if !is_reserved_source(&activity.source) {
+            return Err(ProtocolError::new(
+                ErrorCode::InvalidMessage,
+                "providers may only use reserved sources",
+            ));
+        }
+        activity.validate()?;
+        let key = store::key_of(&activity);
+        let previous = match self.store.upsert(activity.clone(), None, now) {
+            Ok(previous) => previous,
+            Err(e) if e.code == ErrorCode::TooManyActivities => {
+                if let Some(oldest) = self.store.oldest_in(&key.0) {
+                    self.store.remove(&oldest);
+                    self.pops.retain(|p| p.key != oldest);
+                    // Mark now, so a failed retry still leaves a consistent UI.
+                    self.coalescer.mark(now);
+                }
+                self.store.upsert(activity, None, now)?
+            }
+            Err(e) => return Err(e),
+        };
+        self.changed(key, previous, now);
+        Ok(())
+    }
+
+    /// Removes a provider's activity and its pops. A missing activity is a no-op.
+    pub fn provider_remove(&mut self, source: &str, id: &str, now: Instant) {
+        let key = (source.to_string(), id.to_string());
+        if self.store.remove(&key).is_some() {
+            self.pops.retain(|p| p.key != key);
+        }
+        if let Some(undo) = &mut self.undo {
+            if undo.removed.as_ref().is_some_and(|(k, _)| *k == key) {
+                undo.removed = None;
+            }
+            if undo.pop.as_ref().is_some_and(|p| p.key == key) {
+                undo.pop = None;
+            }
+            if undo.removed.is_none() && undo.pop.is_none() {
+                self.undo = None;
+            }
+        }
+        self.coalescer.mark(now);
+    }
+
+    /// Whether a source's text must be hidden everywhere: a provider source with details off.
+    fn text_hidden(&self, source: &str) -> bool {
+        is_reserved_source(source) && !self.settings.pop_setting(source).details
+    }
+
+    /// Replaces a provider activity's text with the generic line when details are off.
+    fn hide_text(&self, mut activity: Activity) -> Activity {
+        if self.text_hidden(&activity.source) {
+            activity.title = view::generic_title(activity.state).into();
+            activity.subtitle = None;
+        }
+        activity
     }
 
     /// Applies the pop rules after an activity was added or changed.
@@ -214,6 +295,11 @@ impl Core {
         let effect = match &action.kind {
             ActionKind::OpenUrl { url } => Some(Effect::OpenUrl(url.clone())),
             ActionKind::FocusWindow { pid } => Some(Effect::FocusWindow(*pid)),
+            ActionKind::Callback if is_reserved_source(source) => Some(Effect::Provider {
+                source: key.0.clone(),
+                id: key.1.clone(),
+                action: action.id.clone(),
+            }),
             ActionKind::Callback => entry.and_then(|e| e.owner).map(|conn| Effect::Callback {
                 conn,
                 message: ServerMessage::Action {
@@ -276,7 +362,7 @@ impl Core {
 
     /// Swaps the ¾ and ¼ items of the dual peek, or swaps them back.
     pub fn swap_peek(&mut self, now: Instant) {
-        let ranked = self.store.ranked();
+        let ranked = self.peek_ranked();
         if let [(a, _), (b, _), ..] = ranked.as_slice() {
             let pair = ((*a).clone(), (*b).clone());
             self.swapped = if self.swapped.as_ref() == Some(&pair) {
@@ -442,13 +528,21 @@ impl Core {
         }
     }
 
+    /// What the peek ranks: pushed activities only. Provider notifications are
+    /// pop-only, though they stay in the store (and in `list`).
+    fn peek_ranked(&self) -> Vec<(&Key, &Entry)> {
+        let mut ranked = self.store.ranked();
+        ranked.retain(|(k, _)| !is_reserved_source(&k.0));
+        ranked
+    }
+
     fn peek(&self, now: Instant) -> Peek {
         let item = |entry: &Entry| {
             let elapsed = matches!(entry.activity.state, State::Running | State::NeedsInput)
                 .then(|| now.saturating_duration_since(entry.started).as_secs() / 60);
             view::item_view(&entry.activity, elapsed)
         };
-        let ranked = self.store.ranked();
+        let ranked = self.peek_ranked();
         match ranked.as_slice() {
             [] => Peek::Idle,
             [(_, only)] => Peek::One { main: item(only) },

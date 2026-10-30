@@ -180,6 +180,42 @@ fn errors_come_back_as_messages_and_a_failing_exit_code() {
 }
 
 #[test]
+fn pushing_to_a_reserved_source_is_refused() {
+    let server = start();
+    let out = server.qapsule(&[
+        "push",
+        "--source",
+        "windows:Fake",
+        "--id",
+        "a",
+        "--title",
+        "hello",
+    ]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("the windows: source prefix is reserved for Qapsule"),
+        "{}",
+        stderr(&out)
+    );
+    let out = server.qapsule(&[
+        "push",
+        "--source",
+        "Windows:Fake",
+        "--id",
+        "a",
+        "--title",
+        "hi",
+    ]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("is reserved for Qapsule"),
+        "{}",
+        stderr(&out)
+    );
+    assert_eq!(server.list().trim(), "Nothing happening.");
+}
+
+#[test]
 fn the_cli_explains_when_qapsule_is_not_running() {
     let out = Command::new(env!("CARGO_BIN_EXE_qapsule"))
         .args(["list"])
