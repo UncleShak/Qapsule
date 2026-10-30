@@ -52,18 +52,18 @@ Three light weeks, about 5 hours each, around your tests and the COS 214 project
 
 **Week of 19 Oct** (tests on Sat 24 Oct, so keep it to about 2 hours)
 
-- [ ] Create the public GitHub repo with an MIT or Apache-2.0 licence.
-- [ ] Write a one-page README with the pitch and a "work in progress" note.
-- [ ] Name check: search for conflicts on "Qynetik" and "Qapsule"; check that the CLI name (`qapsule`) is free on crates.io, winget and Scoop.
+- [x] Create the public GitHub repo with an MIT or Apache-2.0 licence.
+- [x] Write a one-page README with the pitch and a "work in progress" note.
+- [x] Name check: search for conflicts on "Qynetik" and "Qapsule"; check that the CLI name (`qapsule`) is free on crates.io, winget and Scoop.
 
 **Weeks of 26 Oct and 2 Nov**
 
-- [ ] Create a fresh Tauri v2 project with React, TypeScript, Tailwind, Vite and Bun.
-- [ ] Turn it into a Cargo workspace: `crates/protocol`, `crates/cli`, `src-tauri`.
-- [ ] Re-apply your earlier work: app name, transparent background, Mica or Acrylic test.
-- [ ] GitHub Actions on a Windows runner that builds and runs tests on every push.
-- [ ] Turn the phases of this roadmap into GitHub milestones and issues.
-- [ ] Apply for the GitHub Student Developer Pack, if you haven't already.
+- [x] Create a fresh Tauri v2 project with React, TypeScript, Tailwind, Vite and Bun.
+- [x] Turn it into a Cargo workspace: `crates/protocol`, `crates/cli`, `src-tauri`.
+- [x] Re-apply your earlier work: app name, transparent background, Mica or Acrylic test.
+- [x] GitHub Actions on a Windows runner that builds and runs tests on every push.
+- [x] Turn the phases of this roadmap into GitHub milestones and issues.
+- [x] Apply for the GitHub Student Developer Pack, if you haven't already.
 
 **Gate:** the public repo builds in CI with all three crates compiling. If the COS 214 project needs the time, this slips into the week of 18 November; that's fine.
 
@@ -102,7 +102,7 @@ Two weeks to prove the 1% promise, build your main dashboard screen, and put a f
 **Milestone 5, "Lean when idle" (Thu 10 Dec)**
 
 - [x] Webview lifecycle: alive while the peek shows; destroyed 10 seconds after being hidden or tucked away; off-screen render and slide-in on recreate.
-- [ ] Correct at 100%, 150% and 200% scaling.
+- [x] Correct at 100%, 150% and 200% scaling.
 - [x] `scripts/measure-idle.ps1`; peek CPU and memory, and every other budget in the spec, measured and put in the README.
 - [x] One-day spike: can Qapsule get package identity and read Windows notifications? Decide: launch feature or later. Answer: yes with a signed identity package; it's part of the vision, so it's planned for launch (see below and docs/spikes/windows-notifications.md).
 
@@ -110,9 +110,9 @@ Two weeks to prove the 1% promise, build your main dashboard screen, and put a f
 
 Windows only tells an app about new notifications if the app has a signed package identity. On your own laptop a homemade certificate is enough; for everyone else it needs SignPath's signature (GitHub download) or the Microsoft Store (which signs the app itself). SignPath only accepts projects that are already released, so its application waits for v0.1. The Store route runs in parallel in case SignPath says no or is slow.
 
-- [ ] Before exams: register a Microsoft Store individual developer account (free; ID and selfie verification can be slow).
-- [ ] Before exams: install the Windows SDK (`winget install Microsoft.WindowsSDK.10.0.26100`) for MakeAppx and SignTool.
-- [ ] Before exams: turn on two-factor authentication on GitHub (SignPath requires it).
+- [x] Before exams: register a Microsoft Store individual developer account (free; ID and selfie verification can be slow).
+- [x] Before exams: install the Windows SDK (`winget install Microsoft.WindowsSDK.10.0.26100`) for MakeAppx and SignTool.
+- [x] Before exams: turn on two-factor authentication on GitHub (SignPath requires it).
 - [ ] 18–30 Nov: build live notifications on your own laptop with a development identity: per-app pop and detail settings, nothing stored or logged. Use it daily.
 - [ ] 22 Dec, right after v0.1 is published: apply to SignPath Foundation. The README's code signing policy is already in place.
 - [ ] Milestone 9: ship notifications to everyone through whichever route is ready. If neither is, launch without them and switch them on when one lands.
@@ -206,7 +206,7 @@ About 5 hours a week.
 
 **Money**
 
-- [ ] Register a Microsoft Store individual developer account (moved up to before the Nov exams for live notifications). It's free and needs only a Microsoft account plus ID and selfie verification.
+- [x] Register a Microsoft Store individual developer account (moved up to before the Nov exams for live notifications). It's free and needs only a Microsoft account plus ID and selfie verification.
 - [ ] Package Qapsule as an MSIX, so the Store hosts, signs and auto-updates it for free.
 - [ ] Publish a paid Store listing at $3–5 on v1.0 day, described as the one-click, auto-updating build.
 - [ ] Keep the GitHub Releases download free, and say so in the README and the Store listing.
