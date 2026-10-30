@@ -17,6 +17,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 qapsule-core = { path = "../crates/core" }
+qapsule-providers = { path = "../crates/providers" }
 qapsule-server = { path = "../crates/server" }
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = ["tray-icon"] }

@@ -925,7 +925,7 @@ fn provider_pops_follow_source_and_category_settings() {
 }
 
 #[test]
-fn provider_details_off_hides_text_in_pop_peek_and_list() {
+fn provider_details_off_hides_text_in_pop_and_list() {
     let clock = Clock::new();
     let mut core = provider_core(
         "[notifications]\nwindows_apps = { pop = true, details = false }\n",
@@ -937,11 +937,7 @@ fn provider_details_off_hides_text_in_pop_peek_and_list() {
     let pop = state.pop.unwrap();
     assert_eq!(pop.title, "New notification");
     assert_eq!(pop.subtitle, None);
-    let Peek::One { main } = state.peek else {
-        panic!("expected one item");
-    };
-    assert_eq!(main.title, "New notification");
-    assert_eq!(main.subtitle, None);
+    assert!(matches!(state.peek, Peek::Idle));
     let ServerMessage::ListResult { activities } = core.handle(
         1,
         ClientMessage::List {
@@ -976,11 +972,6 @@ fn provider_details_on_shows_text() {
     let pop = state.pop.unwrap();
     assert_eq!(pop.title, "n1 title");
     assert_eq!(pop.subtitle.as_deref(), Some("n1 subtitle"));
-    let Peek::One { main } = state.peek else {
-        panic!("expected one item");
-    };
-    assert_eq!(main.title, "n1 title");
-    assert_eq!(main.subtitle.as_deref(), Some("n1 subtitle"));
 }
 
 #[test]
@@ -994,7 +985,8 @@ fn do_not_disturb_holds_provider_pops() {
     core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
         .unwrap();
     assert_eq!(pop_id(&core, clock.now()), None);
-    assert_eq!(peek_ids(&core, clock.now()), vec!["n1"]);
+    assert!(peek_ids(&core, clock.now()).is_empty());
+    assert_eq!(core.store().len(), 1);
 }
 
 #[test]
@@ -1181,10 +1173,30 @@ fn list_shows_real_text_with_details_on_and_per_app_override_wins() {
     let listed = list_of(&mut core, clock.now());
     assert_eq!(listed[0].title, "n1 title");
     assert_eq!(listed[0].subtitle.as_deref(), Some("n1 subtitle"));
-    let Peek::One { main } = core.snapshot(clock.now()).peek else {
-        panic!("expected one item");
-    };
-    assert_eq!(main.title, "n1 title");
+}
+
+#[test]
+fn provider_notifications_pop_but_never_stay_in_the_peek() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.provider_upsert(activity("windows:X", "n1", State::Info), clock.now())
+        .unwrap();
+    assert_eq!(pop_id(&core, clock.now()).as_deref(), Some("n1"));
+    assert!(matches!(core.snapshot(clock.now()).peek, Peek::Idle));
+    let later = clock.advance(POP_DURATION.as_millis() as u64 + 1);
+    core.tick(later);
+    assert_eq!(pop_id(&core, later), None);
+    assert!(matches!(core.snapshot(later).peek, Peek::Idle));
+    assert_eq!(core.store().len(), 1, "still in the store");
+
+    upsert(&mut core, activity("other", "p1", State::Running), later);
+    assert_eq!(peek_ids(&core, later), vec!["p1"]);
+    core.provider_upsert(activity("windows:X", "n2", State::Info), later)
+        .unwrap();
+    assert!(matches!(core.snapshot(later).peek, Peek::One { .. }));
+    assert_eq!(peek_ids(&core, later), vec!["p1"]);
+    core.swap_peek(later);
+    assert_eq!(peek_ids(&core, later), vec!["p1"]);
 }
 
 #[test]

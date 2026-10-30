@@ -1,0 +1,197 @@
+//! The only WinRT code: listens for other apps' toasts and feeds the engine.
+//! It never logs or formats notification text or app names; errors log HRESULTs.
+
+use std::sync::mpsc::{Sender, channel};
+use std::sync::{Arc, Mutex};
+
+use qapsule_server::Engine;
+use windows::Foundation::TypedEventHandler;
+use windows::UI::Notifications::Management::{
+    UserNotificationListener, UserNotificationListenerAccessStatus,
+};
+use windows::UI::Notifications::{
+    KnownNotificationBindings, UserNotification, UserNotificationChangedEventArgs,
+    UserNotificationChangedKind,
+};
+use windows::Win32::System::Com::{
+    COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoUninitialize,
+};
+use windows::Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize};
+use windows::Win32::UI::Shell::ShellExecuteW;
+use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+use windows::core::{HSTRING, w};
+
+use super::toast::{ToastFields, to_activity};
+use super::tracked::{Tracked, aumid_to_open};
+
+pub struct Notifications {
+    tracked: Arc<Mutex<Tracked>>,
+}
+
+impl Notifications {
+    /// Starts listening on its own thread. Does nothing visible if Windows says no.
+    pub fn start(engine: Engine) -> Notifications {
+        let tracked = Arc::new(Mutex::new(Tracked::default()));
+        let shared = tracked.clone();
+        let spawned = std::thread::Builder::new()
+            .name("qapsule-notifications".into())
+            .spawn(move || listen(engine, shared));
+        if let Err(e) = spawned {
+            eprintln!("qapsule: Windows notifications unavailable: thread ({e})");
+        }
+        Notifications { tracked }
+    }
+
+    /// Runs a button the user pressed. Only `open` exists; anything else is ignored.
+    pub fn act(&self, source: &str, id: &str, action: &str) {
+        let aumid = match self.tracked.lock() {
+            Ok(t) => aumid_to_open(&t, source, id, action),
+            Err(_) => None,
+        };
+        let Some(aumid) = aumid else {
+            return;
+        };
+        // Off the caller's thread, so the engine never waits on the shell.
+        let _ = std::thread::Builder::new()
+            .name("qapsule-open-app".into())
+            .spawn(move || {
+                let target = HSTRING::from(format!("shell:AppsFolder\\{aumid}"));
+                unsafe {
+                    let com =
+                        CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)
+                            .is_ok();
+                    ShellExecuteW(None, w!("open"), &target, None, None, SW_SHOWNORMAL);
+                    if com {
+                        CoUninitialize();
+                    }
+                }
+            });
+    }
+}
+
+fn listen(engine: Engine, tracked: Arc<Mutex<Tracked>>) {
+    unsafe {
+        // Already-initialised is fine; the result is not needed.
+        let _ = RoInitialize(RO_INIT_MULTITHREADED);
+    }
+    let listener = match UserNotificationListener::Current() {
+        Ok(l) => l,
+        Err(e) => return unavailable(format!("{}", e.code())),
+    };
+    let mut status = match listener.GetAccessStatus() {
+        Ok(s) => s,
+        Err(e) => return unavailable(format!("{}", e.code())),
+    };
+    if status == UserNotificationListenerAccessStatus::Unspecified {
+        status = match listener.RequestAccessAsync().and_then(|op| op.join()) {
+            Ok(s) => s,
+            Err(e) => return unavailable(format!("{}", e.code())),
+        };
+    }
+    if status != UserNotificationListenerAccessStatus::Allowed {
+        return unavailable(format!("access status {}", status.0));
+    }
+
+    // The handler only queues events; everything else happens below, in order.
+    let (tx, rx) = channel::<(UserNotificationChangedKind, u32)>();
+    let handler =
+        TypedEventHandler::<UserNotificationListener, UserNotificationChangedEventArgs>::new(
+            move |_, args| {
+                if let Some(args) = args.as_ref() {
+                    queue(&tx, args);
+                }
+                Ok(())
+            },
+        );
+    let token = match listener.NotificationChanged(&handler) {
+        Ok(token) => token,
+        Err(e) => return unavailable(format!("{}", e.code())),
+    };
+    // `listener`, `handler` and `token` stay alive for as long as this loop runs.
+    for (kind, id) in rx {
+        if let Err(e) = process(&engine, &tracked, &listener, kind, id) {
+            eprintln!("qapsule: notification event failed ({})", e.code());
+        }
+    }
+    let _ = listener.RemoveNotificationChanged(token);
+    drop(handler);
+}
+
+fn unavailable(reason: String) {
+    eprintln!("qapsule: Windows notifications unavailable: {reason}");
+}
+
+fn queue(tx: &Sender<(UserNotificationChangedKind, u32)>, args: &UserNotificationChangedEventArgs) {
+    match (args.ChangeKind(), args.UserNotificationId()) {
+        (Ok(kind), Ok(id)) => {
+            let _ = tx.send((kind, id));
+        }
+        (Err(e), _) | (_, Err(e)) => {
+            eprintln!("qapsule: notification event failed ({})", e.code());
+        }
+    }
+}
+
+/// The toast's text elements; empty if they can't be read.
+fn read_texts(notification: &UserNotification) -> Vec<String> {
+    let read = || -> windows::core::Result<Vec<String>> {
+        let binding = notification
+            .Notification()?
+            .Visual()?
+            .GetBinding(&KnownNotificationBindings::ToastGeneric()?)?;
+        let mut texts = Vec::new();
+        for element in binding.GetTextElements()? {
+            if let Ok(text) = element.Text() {
+                texts.push(text.to_string());
+            }
+        }
+        Ok(texts)
+    };
+    read().unwrap_or_default()
+}
+
+fn process(
+    engine: &Engine,
+    tracked: &Mutex<Tracked>,
+    listener: &UserNotificationListener,
+    kind: UserNotificationChangedKind,
+    id: u32,
+) -> windows::core::Result<()> {
+    match kind {
+        UserNotificationChangedKind::Added => {
+            let notification = listener.GetNotification(id)?;
+            let (app_name, aumid) = match notification.AppInfo() {
+                Ok(info) => (
+                    info.DisplayInfo()
+                        .and_then(|d| d.DisplayName())
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|_| "App".into()),
+                    info.AppUserModelId().map(|a| a.to_string()).ok(),
+                ),
+                Err(_) => ("App".into(), None),
+            };
+            let fields = ToastFields {
+                notification_id: id,
+                app_name,
+                aumid,
+                texts: read_texts(&notification),
+            };
+            let activity = to_activity(&fields);
+            if let Ok(mut t) = tracked.lock() {
+                t.insert(activity.id.clone(), (activity.source.clone(), fields.aumid));
+            }
+            engine.provider_upsert(activity);
+        }
+        UserNotificationChangedKind::Removed => {
+            let removed = tracked
+                .lock()
+                .ok()
+                .and_then(|mut t| t.remove(&id.to_string()));
+            if let Some((source, _)) = removed {
+                engine.provider_remove(source, id.to_string());
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}

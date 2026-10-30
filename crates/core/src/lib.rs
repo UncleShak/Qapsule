@@ -362,7 +362,7 @@ impl Core {
 
     /// Swaps the ¾ and ¼ items of the dual peek, or swaps them back.
     pub fn swap_peek(&mut self, now: Instant) {
-        let ranked = self.store.ranked();
+        let ranked = self.peek_ranked();
         if let [(a, _), (b, _), ..] = ranked.as_slice() {
             let pair = ((*a).clone(), (*b).clone());
             self.swapped = if self.swapped.as_ref() == Some(&pair) {
@@ -528,17 +528,21 @@ impl Core {
         }
     }
 
+    /// What the peek ranks: pushed activities only. Provider notifications are
+    /// pop-only, though they stay in the store (and in `list`).
+    fn peek_ranked(&self) -> Vec<(&Key, &Entry)> {
+        let mut ranked = self.store.ranked();
+        ranked.retain(|(k, _)| !is_reserved_source(&k.0));
+        ranked
+    }
+
     fn peek(&self, now: Instant) -> Peek {
         let item = |entry: &Entry| {
             let elapsed = matches!(entry.activity.state, State::Running | State::NeedsInput)
                 .then(|| now.saturating_duration_since(entry.started).as_secs() / 60);
-            if self.text_hidden(&entry.activity.source) {
-                view::item_view(&self.hide_text(entry.activity.clone()), elapsed)
-            } else {
-                view::item_view(&entry.activity, elapsed)
-            }
+            view::item_view(&entry.activity, elapsed)
         };
-        let ranked = self.store.ranked();
+        let ranked = self.peek_ranked();
         match ranked.as_slice() {
             [] => Peek::Idle,
             [(_, only)] => Peek::One { main: item(only) },

@@ -52,3 +52,12 @@ For the core's input interface, the larger `core.apply(Input)` refactor (archite
 - **Provider buttons and ids carry no notification text.** Provider action labels are fixed strings (`Open`), action ids are fixed (`open`), and activity ids are the opaque Windows notification id. So with details off, nothing from the toast reaches the UI or `list` through labels or ids.
 - **Undo can't revive a removed notification.** If Windows reports a notification removed while its dismissal can still be undone, the pending undo for it is dropped too.
 - **Public surface.** `crates/protocol` exports `RESERVED_SOURCE_PREFIXES` and `is_reserved_source`; the matching helpers stay private to the crate.
+
+**2026-10-30, after examination of the Phase 3 provider**
+
+- **App names are private in logs.** Which apps send you notifications is personal, so app display names (and therefore `windows:` source keys) are never logged, like notification text. Logs carry error codes, HRESULTs and access statuses only.
+- **Opening the sending app trusts the toast's AUMID within limits.** The Open button launches `shell:AppsFolder\<AUMID>`, where the AUMID comes from Windows' record of the toast. Packaged apps can't choose theirs; unpackaged apps can, but they already run as the user and could launch anything themselves, so this adds no new power. As defence in depth, AUMIDs containing `..` or `://`, or starting with `\`, are refused. Paths with single `\` stay allowed because browsers' AUMIDs are paths.
+
+**2026-10-30, after the Archon's first test with real messages**
+
+- **Notifications pop only.** Activities in reserved sources show as pops and never take a place in the peek. Reading a message in its app doesn't clear the Windows toast, so a notification would otherwise sit in the peek, above the clock, for its whole lifetime. They stay in the store until Windows removes them or they expire, for `list` and a future main-screen list.

@@ -10,7 +10,7 @@ Toasts from other apps (WhatsApp, Teams, Outlook…) pop in the pill as they arr
 
 ## Decisions (settled by Plato unless the Archon overrides)
 
-1. **Activities, not a new pipeline.** Each toast becomes an `Activity` with `state = Info` inside the core, so pops, priority, Do Not Disturb, expiry and the coalescer all work unchanged.
+1. **Activities, not a new pipeline.** Each toast becomes an `Activity` with `state = Info` inside the core, so pops, priority, Do Not Disturb, expiry and the coalescer all work unchanged. They pop only and never stay in the peek (decided after the first real test; decision 0006 amendments).
 2. **Source per app: `windows:<App-Display-Name>`**, whitespace turned into `-` because protocol keys can't contain spaces (for example `windows:WhatsApp`, `windows:Microsoft-Teams`; the label shows spaces again). `settings::category` maps any `windows:` source to `windows_apps`, so the existing lookup gives per-app overrides for free:
    ```toml
    [notifications]

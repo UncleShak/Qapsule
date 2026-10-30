@@ -8,9 +8,10 @@ mod watcher;
 mod window;
 
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use qapsule_core::{Effect, PresenceEffect, Settings, UiState, VisibilityMode};
+use qapsule_providers::notifications::Notifications;
 use qapsule_server::{Engine, Listener, Shell, config, pipe_name, run_effect};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
@@ -24,6 +25,8 @@ use window::Rect;
 struct WindowShell {
     app: AppHandle,
     lifecycle: Lifecycle,
+    /// Set once the engine exists; the shell is built before it.
+    notifications: Arc<OnceLock<Notifications>>,
 }
 
 impl Shell for WindowShell {
@@ -33,7 +36,14 @@ impl Shell for WindowShell {
     }
 
     fn run(&mut self, effect: Effect) {
-        run_effect(effect);
+        match effect {
+            Effect::Provider { source, id, action } if source.starts_with("windows:") => {
+                if let Some(notifications) = self.notifications.get() {
+                    notifications.act(&source, &id, &action);
+                }
+            }
+            effect => run_effect(effect),
+        }
     }
 
     fn presence(&mut self, effect: PresenceEffect) {
@@ -186,9 +196,11 @@ pub fn run() {
             }
 
             let lifecycle = Lifecycle::new(app.handle().clone());
+            let notifications = Arc::new(OnceLock::new());
             let shell = WindowShell {
                 app: app.handle().clone(),
                 lifecycle: lifecycle.clone(),
+                notifications: notifications.clone(),
             };
             let pipe = pipe_name();
             let initial = settings.clone();
@@ -206,6 +218,8 @@ pub fn run() {
                     std::process::exit(1);
                 }
             };
+
+            let _ = notifications.set(Notifications::start(engine.clone()));
 
             let mode_items = build_tray(app, settings.visibility)?;
             app.manage(AppState {

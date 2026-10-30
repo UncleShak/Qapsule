@@ -222,10 +222,9 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
                 None => {}
             },
             Command::ProviderUpsert(activity) => {
-                let source = activity.source.clone();
                 if let Err(e) = core.provider_upsert(*activity, now) {
-                    // Source and code only: never the notification text.
-                    eprintln!("provider activity from `{source}` refused: {:?}", e.code);
+                    // The code only: never the notification text or the app's name.
+                    eprintln!("qapsule: provider activity refused: {:?}", e.code);
                 }
             }
             Command::ProviderRemove { source, id } => core.provider_remove(&source, &id, now),
