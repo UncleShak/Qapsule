@@ -12,8 +12,8 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    DefWindowProcW, GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WM_NCACTIVATE, WM_NCPAINT,
-    WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    DefWindowProcW, GWL_EXSTYLE, GetWindowLongPtrW, SW_SHOWNOACTIVATE, SetWindowLongPtrW,
+    ShowWindow, WM_NCACTIVATE, WM_NCPAINT, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
 };
 
 use crate::monitor;
@@ -79,7 +79,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         WindowEvent::Destroyed => crate::webview_gone(&handle),
         _ => {}
     });
-    window.show()?;
+    // Not `window.show()`: that activates the window, so a pop would take the keyboard
+    // from whatever you're typing in. tao's `focus: false` only covers windows created
+    // visible, and this one is created hidden so it can be placed and clipped first.
+    if let Some(hwnd) = hwnd(&window) {
+        unsafe {
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        }
+    }
     Ok(window)
 }
 
