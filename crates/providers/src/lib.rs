@@ -2,3 +2,4 @@
 //! `provider_upsert` and `provider_remove`; it never touches the UI.
 
 pub mod notifications;
+pub mod weather;

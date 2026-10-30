@@ -9,6 +9,15 @@ repository.workspace = true
 [dependencies]
 qapsule-protocol = { path = "../protocol" }
 qapsule-server = { path = "../server" }
+qapsule-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+# Schannel on Windows: no OpenSSL and no rustls.
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "query"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.62"
