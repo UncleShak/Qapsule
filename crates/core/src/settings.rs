@@ -182,6 +182,12 @@ impl Default for Settings {
 
 /// The category a source belongs to in `[notifications]`.
 pub fn category(source: &str) -> &'static str {
+    if source
+        .get(..9)
+        .is_some_and(|head| head.eq_ignore_ascii_case("calendar:"))
+    {
+        return "calendar";
+    }
     if qapsule_protocol::is_reserved_source(source) {
         return "windows_apps";
     }

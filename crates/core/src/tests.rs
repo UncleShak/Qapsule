@@ -1206,6 +1206,22 @@ fn reserved_sources_match_without_regard_to_case() {
     assert_eq!(view::source_label("Windows:Some-App"), "Some App");
 }
 
+#[test]
+fn calendar_sources_have_their_own_category_label_icon_and_generic_title() {
+    assert_eq!(settings::category("calendar:events"), "calendar");
+    assert_eq!(settings::category("CALENDAR:events"), "calendar");
+    assert_eq!(view::source_label("calendar:events"), "Calendar");
+    assert!(qapsule_protocol::is_reserved_source("Calendar:events"));
+    assert_eq!(
+        view::generic_title("calendar:events", qapsule_protocol::State::Info),
+        "Upcoming event"
+    );
+    assert_eq!(
+        view::generic_title("windows:X", qapsule_protocol::State::Info),
+        "New notification"
+    );
+}
+
 // --- The expanded view -------------------------------------------------------
 
 fn click_settings() -> Settings {

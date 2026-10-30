@@ -44,7 +44,7 @@ pub mod limits {
 
 /// Source prefixes that belong to Qapsule's own providers. Pipe clients may not
 /// `upsert` or `end` activities in them.
-pub const RESERVED_SOURCE_PREFIXES: &[&str] = &["windows:"];
+pub const RESERVED_SOURCE_PREFIXES: &[&str] = &["windows:", "calendar:"];
 
 /// Whether `source` starts with a reserved prefix.
 pub fn is_reserved_source(source: &str) -> bool {

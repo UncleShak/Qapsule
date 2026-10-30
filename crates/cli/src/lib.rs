@@ -1,6 +1,7 @@
 //! The `qapsule` command-line client. It talks to the app only through the
 //! named pipe, using the protocol crate.
 
+pub mod calendar;
 pub mod client;
 pub mod hook;
 mod wrap;
@@ -59,6 +60,11 @@ pub enum Command {
     },
     /// Run a command, showing it as running and then done or failed
     Wrap(WrapArgs),
+    /// Manage the calendar link (stored in Windows Credential Manager)
+    Calendar {
+        #[command(subcommand)]
+        command: calendar::CalendarCommand,
+    },
     /// Turn an agent's hook event (JSON on stdin) into an activity. Always silent.
     Hook {
         #[arg(value_enum)]
@@ -360,6 +366,7 @@ fn run(cli: Cli) -> Result<(), String> {
             }
             Ok(())
         }
+        Command::Calendar { command } => calendar::run(command),
         Command::Done(args) => send_one(&args.message(State::Succeeded)),
         Command::Fail(args) => send_one(&args.message(State::Failed)),
         Command::Clear { source, id, all } => {

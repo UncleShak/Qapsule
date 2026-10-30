@@ -247,7 +247,7 @@ impl Core {
     /// Replaces a provider activity's text with the generic line when details are off.
     fn hide_text(&self, mut activity: Activity) -> Activity {
         if self.text_hidden(&activity.source) {
-            activity.title = view::generic_title(activity.state).into();
+            activity.title = view::generic_title(&activity.source, activity.state).into();
             activity.subtitle = None;
         }
         activity
@@ -625,7 +625,7 @@ impl Core {
             title: if details {
                 activity.title.clone()
             } else {
-                view::generic_title(activity.state).into()
+                view::generic_title(&activity.source, activity.state).into()
             },
             subtitle: details.then(|| activity.subtitle.clone()).flatten(),
             state: activity.state,

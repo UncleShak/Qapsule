@@ -10,11 +10,15 @@ repository.workspace = true
 qapsule-protocol = { path = "../protocol" }
 qapsule-server = { path = "../server" }
 qapsule-core = { path = "../core" }
+qapsule-secrets = { path = "../secrets" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 # Schannel on Windows: no OpenSSL and no rustls.
 reqwest = { version = "0.13", default-features = false, features = ["native-tls", "query"] }
+rrule = "0.14.0"
+chrono = "0.4.45"
+chrono-tz = "0.10.4"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }

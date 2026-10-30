@@ -156,6 +156,7 @@ pub fn source_label(source: &str) -> String {
         "claude-code" => "Claude Code".into(),
         "codex" => "Codex".into(),
         "wrap" => "Command".into(),
+        other if is_calendar(other) => "Calendar".into(),
         other => match other.split_once(':') {
             Some((_, name)) if qapsule_protocol::is_reserved_source(other) => {
                 name.replace('-', " ")
@@ -173,14 +174,24 @@ pub fn icon_for(activity: &Activity) -> String {
     match activity.source.as_str() {
         "claude-code" | "codex" => "agent",
         "wrap" => "build",
+        s if is_calendar(s) => "calendar",
         s if qapsule_protocol::is_reserved_source(s) => "app",
         _ => "info",
     }
     .into()
 }
 
-/// The line a pop shows when details are off for its source.
-pub fn generic_title(state: State) -> &'static str {
+fn is_calendar(source: &str) -> bool {
+    source
+        .get(..9)
+        .is_some_and(|head| head.eq_ignore_ascii_case("calendar:"))
+}
+
+/// The line a pop shows when details are off for an activity from `source`.
+pub fn generic_title(source: &str, state: State) -> &'static str {
+    if is_calendar(source) {
+        return "Upcoming event";
+    }
     match state {
         State::Running => "Working",
         State::NeedsInput => "Needs your input",

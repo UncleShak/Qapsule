@@ -160,6 +160,16 @@ fn push_list_done_and_clear() {
 }
 
 #[test]
+fn set_link_refuses_a_bad_link_before_touching_credential_manager() {
+    let server = start();
+    let out = server.qapsule_with_stdin(&["calendar", "set-link"], "http://secret.example/a.ics\n");
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("https://"), "{}", stderr(&out));
+    assert!(!stderr(&out).contains("secret.example"));
+    assert!(stdout(&out).is_empty());
+}
+
+#[test]
 fn errors_come_back_as_messages_and_a_failing_exit_code() {
     let server = start();
     let out = server.qapsule(&["done", "--id", "nope"]);
