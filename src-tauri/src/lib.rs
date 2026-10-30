@@ -1,6 +1,7 @@
 //! The app shell: wires the engine and pipe server to the window, the tray and
 //! the watcher. Keep logic thin here; testable code lives in `crates/`.
 
+pub mod identity;
 mod lifecycle;
 mod monitor;
 mod watcher;

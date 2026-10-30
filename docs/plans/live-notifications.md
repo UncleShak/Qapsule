@@ -40,7 +40,9 @@ Each phase lists who does what. Routing follows `.claude/academy.md`.
 Commission → aristotle:
 - `packaging/identity/AppxManifest.xml`: sparse package `Qynetik.Qapsule.Dev`, `uap10:AllowExternalContent`, `uap10:RuntimeBehavior="win32App"`, `uap10:TrustLevel="mediumIL"`, capability `userNotificationListener`.
 - `src-tauri/qapsule.exe.manifest` with the matching `<msix>` element, keeping Tauri's default common-controls and DPI entries; embed it via `tauri_build::WindowsAttributes::app_manifest` in `src-tauri/build.rs`.
-- `scripts/identity/new-dev-cert.ps1` (self-signed cert, exported `.cer`), `build-identity.ps1` (MakeAppx `pack /nv` + SignTool), `register-identity.ps1 -ExternalLocation <exe folder>` and `unregister-identity.ps1`.
+- `scripts/identity/register-identity.ps1` (primary route: Developer Mode loose registration of `AppxManifest.xml` with `-ExternalLocation target/debug`, no certificate) and `unregister-identity.ps1`. Fallback `-Signed` route: `new-dev-cert.ps1` (self-signed cert, exported `.cer`), `build-identity.ps1` (MakeAppx `pack` with manifest validation + SignTool), `trust-dev-cert.ps1`, and `untrust-dev-cert.ps1` to undo the machine-wide trust.
+- On the dev machine any `qapsule-app.exe` in `target/debug` inherits the notification permission; accepted for development, never for release builds.
+- The `<msix>` element is embedded in debug builds only.
 - A `--identity-check` debug path (or test binary) that prints `Package::Current()` and whether `NotificationChanged` subscribes.
 
 Checks the student must report (these are the spike's open risks):
@@ -48,7 +50,7 @@ Checks the student must report (these are the spike's open risks):
 2. With it **unregistered**: the app still starts and runs normally (the GitHub installer must not break).
 3. `%APPDATA%\Qynetik\Capsule\config.toml` is still read and written at the real path (no virtualisation).
 
-Archon does by hand (needs admin): import the `.cer` into `LocalMachine\TrustedPeople` once.
+Archon does by hand: turn on Developer Mode and run `register-identity.ps1`. Only for the `-Signed` fallback (needs admin): import the `.cer` into `LocalMachine\TrustedPeople` with `trust-dev-cert.ps1`.
 
 socrates: examine the scripts and manifests (cert scope, what's trusted, ExternalLocation path).
 
