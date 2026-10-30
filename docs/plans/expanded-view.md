@@ -151,7 +151,12 @@ Filled in by Plato as gates pass.
 
 - **Phase 1 passed.** Socrates asked 5 questions, all fixed: a lost webview counts as the pointer leaving; hover behaves the same in every mode; the undo bar pauses while open; needs-input pops survive the pop-queue cap; a city change resets the weather view (cities over 100 characters are ignored). Archon approved; 91 core tests.
 - **Phase 2 passed** on the second gate. The first was rejected: closing could take focus from a window clicked since opening (now only gives focus back if the capsule still has it), and a reported glyph table was missing. Archon approved the fixes.
+- **Phase 3 passed.** Weather provider built in a parallel worktree, cherry-picked, wired by Plato. Archon approved; 20 provider tests, no network in tests, Schannel TLS only.
 
 ## Deferred
 
 Ideas found during the night that are not part of milestone 6.
+
+- Proper weather glyphs: Segoe Fluent Icons has no weather set; pick an icon source that follows DESIGN.md.
+- An unknown city is geocoded again on every open; consider caching "not found" per city.
+- The weather city is read once at start; it updates when config reload lands.

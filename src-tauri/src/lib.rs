@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use qapsule_core::{Effect, PresenceEffect, Settings, UiState, VisibilityMode};
 use qapsule_providers::notifications::{Notifications, Status};
+use qapsule_providers::weather::Weather;
 use qapsule_server::{Engine, Listener, Shell, config, pipe_name, run_effect};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
@@ -27,6 +28,8 @@ struct WindowShell {
     lifecycle: Lifecycle,
     /// Set once the engine exists; the shell is built before it.
     notifications: Arc<OnceLock<Notifications>>,
+    /// Set once the engine exists, like `notifications`.
+    weather: Arc<OnceLock<Weather>>,
     /// The last `focus` the core asked for.
     focused: bool,
     /// The window that had the foreground before the capsule took it.
@@ -76,8 +79,11 @@ impl Shell for WindowShell {
         self.lifecycle.apply(effect);
     }
 
-    // Phases 3 and 4 hand this to the weather and calendar providers.
-    fn main_screen(&mut self, _visible: bool) {}
+    fn main_screen(&mut self, visible: bool) {
+        if let Some(weather) = self.weather.get() {
+            weather.main_screen(visible);
+        }
+    }
 }
 
 struct AppState {
@@ -265,19 +271,24 @@ pub fn run() {
 
             let lifecycle = Lifecycle::new(app.handle().clone());
             let notifications = Arc::new(OnceLock::new());
+            let weather = Arc::new(OnceLock::new());
             let shell = WindowShell {
                 app: app.handle().clone(),
                 lifecycle: lifecycle.clone(),
                 notifications: notifications.clone(),
+                weather: weather.clone(),
                 focused: false,
                 previous_foreground: None,
             };
             let pipe = pipe_name();
             let initial = settings.clone();
+            let city = settings.weather_city().map(str::to_owned);
             let started = tauri::async_runtime::block_on(async move {
                 let listener = Listener::bind(&pipe)?;
                 let engine = Engine::spawn(initial, shell);
                 tauri::async_runtime::spawn(listener.run(engine.clone()));
+                // Starts its task on this runtime; nothing is fetched until the main screen opens.
+                let _ = weather.set(Weather::start(engine.clone(), city));
                 Ok::<_, std::io::Error>(engine)
             });
             let engine = match started {
