@@ -61,3 +61,7 @@ For the core's input interface, the larger `core.apply(Input)` refactor (archite
 **2026-10-30, after the Archon's first test with real messages**
 
 - **Notifications pop only.** Activities in reserved sources show as pops and never take a place in the peek. Reading a message in its app doesn't clear the Windows toast, so a notification would otherwise sit in the peek, above the clock, for its whole lifetime. They stay in the store until Windows removes them or they expire, for `list` and a future main-screen list.
+
+**2026-10-31, new prefix**
+
+- **`calendar:` is reserved** for the calendar provider's pops (source `calendar:events`). See decision 0007.
