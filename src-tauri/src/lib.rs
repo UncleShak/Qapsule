@@ -32,38 +32,16 @@ struct WindowShell {
     /// Set once the engine exists, like `notifications`.
     weather: Arc<OnceLock<Weather>>,
     calendar: Arc<OnceLock<Calendar>>,
-    /// The last `focus` the core asked for.
-    focused: bool,
-    /// The window that had the foreground before the capsule took it.
-    previous_foreground: Option<isize>,
-}
-
-impl WindowShell {
-    /// The hotkey opened the view: take focus, remembering who had it. Closing gives it back.
-    fn follow_focus(&mut self, focus: bool) {
-        if focus == self.focused {
-            return;
-        }
-        if focus {
-            if let Some(main) = self.app.get_webview_window("main") {
-                self.focused = true;
-                self.previous_foreground = window::take_focus(&main);
-            }
-        } else {
-            self.focused = false;
-            if let Some(previous) = self.previous_foreground.take() {
-                window::give_back_focus(self.app.get_webview_window("main").as_ref(), previous);
-            }
-        }
-    }
+    focus: Arc<window::Focus>,
 }
 
 impl Shell for WindowShell {
     fn update(&mut self, state: UiState) {
         let focus = state.focus;
-        // Nothing to do if the webview doesn't exist: it asks for a snapshot when it starts.
+        // Nothing to emit if the webview doesn't exist: it asks for a snapshot when it starts.
         let _ = self.app.emit_to("main", "ui-state", state);
-        self.follow_focus(focus);
+        self.focus
+            .follow(focus, self.app.get_webview_window("main").as_ref(), false);
     }
 
     fn run(&mut self, effect: Effect) {
@@ -96,15 +74,22 @@ struct AppState {
     settings: Mutex<Settings>,
     config_path: Option<PathBuf>,
     mode_items: Vec<(VisibilityMode, CheckMenuItem<Wry>)>,
+    focus: Arc<window::Focus>,
 }
 
 #[tauri::command]
-async fn get_snapshot(state: State<'_, AppState>) -> Result<UiState, String> {
-    state
+async fn get_snapshot(
+    state: State<'_, AppState>,
+    window: WebviewWindow,
+) -> Result<UiState, String> {
+    let snapshot = state
         .engine
         .snapshot()
         .await
-        .ok_or_else(|| "the engine has stopped".into())
+        .ok_or_else(|| String::from("the engine has stopped"))?;
+    // A webview recreated while focus is wanted takes it now; one that isn't wanted doesn't.
+    state.focus.follow(snapshot.focus, Some(&window), true);
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -278,14 +263,14 @@ pub fn run() {
             let notifications = Arc::new(OnceLock::new());
             let weather = Arc::new(OnceLock::new());
             let calendar = Arc::new(OnceLock::new());
+            let focus = Arc::new(window::Focus::default());
             let shell = WindowShell {
                 app: app.handle().clone(),
                 lifecycle: lifecycle.clone(),
                 notifications: notifications.clone(),
                 weather: weather.clone(),
                 calendar: calendar.clone(),
-                focused: false,
-                previous_foreground: None,
+                focus: focus.clone(),
             };
             let pipe = pipe_name();
             let initial = settings.clone();
@@ -324,6 +309,7 @@ pub fn run() {
                 settings: Mutex::new(settings),
                 config_path,
                 mode_items,
+                focus,
             });
 
             let handle = app.handle().clone();

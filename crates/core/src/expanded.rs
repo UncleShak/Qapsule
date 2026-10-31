@@ -4,6 +4,8 @@
 
 use std::time::Instant;
 
+use qapsule_protocol::State;
+
 use crate::settings::ExpandOn;
 use crate::view::{EventsView, WeatherView};
 use crate::{COLLAPSE_GRACE, Core, EXPAND_DWELL, EXPAND_INTENT_DELAY, POP_DURATION, UNDO_DURATION};
@@ -25,6 +27,9 @@ pub(crate) struct Expanded {
     collapse_at: Option<Instant>,
     /// What providers were last told by [`Core::take_main_screen`].
     reported: bool,
+    /// Esc or the hotkey closed the view with the pointer over it: hovering doesn't
+    /// open it again until the pointer has left.
+    suppressed: bool,
 }
 
 impl Expanded {
@@ -65,6 +70,7 @@ impl Core {
     pub(crate) fn can_hover_open(&self) -> bool {
         self.settings.expand_on == ExpandOn::Hover
             && !self.expanded.is_open()
+            && !self.expanded.suppressed
             && !self.pop_or_undo_showing()
     }
 
@@ -80,6 +86,7 @@ impl Core {
     /// The pointer left: no more dwell, and a view opened by the pointer closes soon.
     pub(crate) fn expanded_pointer_left(&mut self, now: Instant) {
         self.expanded.expand_at = None;
+        self.expanded.suppressed = false;
         if self.expanded.open == Open::Pointer {
             self.expanded.collapse_at = Some(now + COLLAPSE_GRACE);
         }
@@ -106,7 +113,7 @@ impl Core {
     /// The hotkey: open the view and keep it open, or close it.
     pub fn toggle_expanded(&mut self, now: Instant) {
         if self.expanded.is_pinned() {
-            self.close(now);
+            self.close_by_keyboard(now);
         } else {
             self.open(Open::Pinned, now);
         }
@@ -114,7 +121,14 @@ impl Core {
 
     /// Esc: close the view whichever way it was opened.
     pub fn close_expanded(&mut self, now: Instant) {
+        self.close_by_keyboard(now);
+    }
+
+    fn close_by_keyboard(&mut self, now: Instant) {
+        let was_open = self.expanded.is_open();
         self.close(now);
+        // The pointer is probably still resting there; it must not undo the close.
+        self.expanded.suppressed = was_open && self.pointer_over;
     }
 
     fn open(&mut self, how: Open, now: Instant) {
@@ -137,6 +151,14 @@ impl Core {
                 pop.until = Some(now + POP_DURATION);
             }
         }
+        // A pop whose activity ran out while nobody could see it is stale; a finished
+        // activity's pop is its own copy and still shows.
+        let store = &self.store;
+        self.pops.retain(|pop| {
+            pop.until.is_none()
+                || matches!(pop.activity.state, State::Succeeded | State::Failed)
+                || store.get(&pop.key).is_some()
+        });
         if let Some(undo) = &mut self.undo {
             undo.until = now + UNDO_DURATION;
         }

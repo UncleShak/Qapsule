@@ -1,6 +1,6 @@
 # Plan: the expanded view (milestone 6)
 
-Status: approved · 2026-10-31 · Built overnight by the Academy, branch `expanded-view` (off `live-notifications`)
+Status: built, awaiting the Archon's manual checks · 2026-10-31 · Built overnight by the Academy, branch `expanded-view` (off `live-notifications`)
 
 Background: `docs/SPEC.md` (Expanded view, Widgets and providers, Configuration, Security and privacy), `DESIGN.md` (sections 3, 4, 6, 7, 9, 10), `docs/decisions/0007-expanded-view-and-widget-providers.md`.
 
@@ -136,13 +136,16 @@ bun run --cwd ui build
 - [ ] Weather and events look right next to the design canvas; reduced motion (Windows Animation effects off) works.
 - [ ] A "starts in 10 minutes" pop for a test event.
 - [ ] `scripts/measure-idle.ps1`: idle CPU and memory still within budget.
-- [ ] 150% and 200% scaling.
+- [ ] 150% and 200% scaling. Known gap (Deferred): displays narrower than about 1064 logical px (1920 × 1080 at 200%) cut the expanded view off.
 - [ ] Hotkey: open, click into another app, press the hotkey again: that app keeps focus. Open, press Esc: focus returns to where you were.
 - [ ] Weather glyphs are approximations (Segoe Fluent Icons has no weather set): clear = Brightness, one Cloud for partly cloudy/cloudy/fog, Drop for rain, a Unicode snowflake. Check them and the snowflake's size and baseline.
 - [ ] The hourly weather row has no per-hour glyph (to fit 128 px), unlike DESIGN.md's table. Confirm against the canvas.
 - [ ] The clock and actionless peek items are now buttons (Tab reaches them; in click mode they expand). Confirm.
 - [ ] New `--font-mono` token (for the `qapsule calendar set-link` hint): add it to DESIGN.md or drop it.
 - [ ] In Credential Manager (Generic credentials), delete any leftover `Qapsule/test-*` entries a failed test may have left.
+- [ ] Hotkey, then let the webview be recreated while the view is open (Peek on demand, wait 15 s tucked, hotkey): it takes focus, and Esc gives it back.
+- [ ] DESIGN.md:159 still says "hover the peek 300ms; collapse 600ms", which contradicts DESIGN.md:240 and decision 7. Your call: fix the heading.
+- [ ] If any manual expanded-view check fails, untick the two milestone-6 items in docs/ROADMAP.md.
 - [ ] Read decision 0007; push the branch when happy.
 - [ ] Note: the phase 1 commit alone (without phase 2) opens the view in the core but the old UI ignores it; test from the branch tip.
 
@@ -154,6 +157,15 @@ Filled in by Plato as gates pass.
 - **Phase 2 passed** on the second gate. The first was rejected: closing could take focus from a window clicked since opening (now only gives focus back if the capsule still has it), and a reported glyph table was missing. Archon approved the fixes.
 - **Phase 3 passed.** Weather provider built in a parallel worktree, cherry-picked, wired by Plato. Archon approved; 20 provider tests, no network in tests, Schannel TLS only.
 - **Phase 4 passed** on the second gate. Built in a parallel worktree, cherry-picked, wired by Plato (timeout cut from 20 s to 10 s per decision 14). Socrates asked 5 questions: unbounded RRULE expansion and memory now capped (SECONDLY/MINUTELY keep one occurrence, 100,000 iterations per series, 5,000 events, 10,000 occurrences) with parsing on a blocking thread; redirects are HTTPS only; config reload and Outlook zone names deferred (reload doesn't exist yet). The first gate was rejected for flaky tests (the blocking parse raced the paused test clock); the parse runner is now injectable. Archon approved; providers suite 8/8 and 10/10 green.
+- **Phase 5 passed.** Socrates examined the whole branch and found four seams, all fixed and (except focus, which is Win32) tested: the hotkey's focus now survives a recreated webview; Esc or the hotkey closing the view isn't undone by the next mouse move; the calendar shows cached events as of now while it refreshes; pops whose activity expired while the view was open are dropped on close (finished ones keep their time). Narrow displays cut to Deferred. Docs updated. Archon approved; core 94 and providers 68 tests, providers suite 4/4.
+
+### Morning report
+
+**Built:** the expanded view, with all its state in the core (dwell 180 ms, slowing 60 ms, collapse 300 ms, click mode, hotkey until Esc, pops wait while open). Main screen: clock and date, weather (Open-Meteo), calendar now and next with "starts in N minutes" pops from the reserved `calendar:events` source. `crates/secrets` and `qapsule calendar set-link | clear-link | status`. Docs: SPEC, README, release checklist, ROADMAP, the calendar guide, decision 0007 and the amendment to 0006.
+
+**Rejected at a gate, then fixed:** phase 2 (focus could be taken from a window clicked since opening; a glyph table reported but missing) and phase 4 (flaky tests from the blocking parse racing the paused clock).
+
+**Cut or deferred:** see Deferred below.
 
 ## Deferred
 
@@ -163,4 +175,6 @@ Ideas found during the night that are not part of milestone 6.
 - An unknown city is geocoded again on every open; consider caching "not found" per city.
 - The weather city is read once at start; it updates when config reload lands.
 - Config reload (milestone 6 tray item): when it lands, the weather city and `[notifications] calendar` (pops, `minutes_before`) must follow it; today they apply after a restart.
+- Narrow displays: the expanded capsule's hit area is 1064 × 190 logical px and isn't clamped to the screen, so displays narrower than that (1920 × 1080 at 200%, 1280 × 800 at 125%) cut it off. Needs a design decision: shrink the capsule, or narrower slots.
+- `get_snapshot` can apply an older snapshot's `focus = true` after a close if a webview starts at the same moment as Esc; the next update corrects it. Consider sequence-numbered snapshots.
 - Outlook feeds with Windows time zone names (or custom VTIMEZONE) are read as local time; map Windows zone names or read VTIMEZONE.

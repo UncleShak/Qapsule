@@ -17,6 +17,7 @@ Repeat at 100%, 150% and 200% (Settings → System → Display → Scale), chang
 - [ ] Shapes and text are sharp, not blurry.
 - [ ] Hover stretches the shape; clicks on the pill work; clicks just beside it reach the app underneath.
 - [ ] In Peek on demand, touching the top centre brings the pill out.
+- [ ] The expanded view fits, centred, with nothing cut off.
 
 ## Behaviour
 
@@ -26,3 +27,9 @@ Repeat at 100%, 150% and 200% (Settings → System → Display → Scale), chang
 - [ ] A Claude Code permission prompt pops "Claude needs you", and **Open terminal** brings the right window forward.
 - [ ] Dismiss, then Undo, brings the pop back.
 - [ ] Quit from the tray menu closes Qapsule completely.
+- [ ] Hovering the peek slowly opens the expanded view; sweeping past quickly doesn't; leaving closes it after a moment.
+- [ ] With `expand_on = "click"`, hover doesn't open it and a click on the peek does.
+- [ ] Ctrl+Alt+Space opens it and takes keyboard focus; Esc closes it and focus returns to the previous window. Opening by hotkey, clicking another app, then the hotkey again leaves that app focused.
+- [ ] A pop arriving while the view is open shows after it closes, for its full time.
+- [ ] Weather shows your city's forecast; with no city it asks for one.
+- [ ] Events show now and next from `qapsule calendar set-link`; a test event pops 10 minutes before it starts.

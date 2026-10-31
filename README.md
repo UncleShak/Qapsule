@@ -40,7 +40,7 @@ Make it yours: right-click to drag widgets around, remove the ones you don't use
 ### Everyday notifications
 
 - **Music:** see what's playing, skip or pause without opening your player, and optionally get a pop when the song changes.
-- **Calendar:** a heads-up 10 minutes before your next event. Works with Google Calendar and anything else that offers an iCal link.
+- **Calendar:** a heads-up 10 minutes before your next event. Works with Google Calendar and anything else that offers an iCal link. Set it up with `qapsule calendar set-link` (docs/integrations/calendar.md).
 - **Timer:** a pop when time's up.
 - **Downloads:** know when a file has finished.
 - **Other apps:** Windows notifications in the pill (planned, depending on what Windows allows).

@@ -1893,3 +1893,43 @@ fn a_city_over_100_characters_is_ignored() {
     assert_eq!(settings.weather_city(), None);
     assert_eq!(warnings.len(), 1, "{warnings:?}");
 }
+
+#[test]
+fn esc_while_the_pointer_is_over_is_not_undone_until_it_leaves() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_pointer(true, clock.now());
+    core.tick(clock.advance(200));
+    assert!(is_open(&core, clock.now()));
+
+    core.close_expanded(clock.advance(10));
+    assert!(!is_open(&core, clock.now()));
+    core.pointer_slowed(clock.advance(10));
+    core.tick(clock.advance(1_000));
+    assert!(!is_open(&core, clock.now()), "hovering can't reopen it");
+
+    core.set_pointer(false, clock.advance(10));
+    core.set_pointer(true, clock.advance(10));
+    core.tick(clock.advance(200));
+    assert!(is_open(&core, clock.now()), "a fresh hover opens it again");
+}
+
+#[test]
+fn expired_timed_pops_are_dropped_when_the_view_closes_but_finished_ones_stay() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.toggle_expanded(clock.now());
+    let mut info = activity("calendar:events", "e1", State::Info);
+    info.expires_in = Some(10);
+    core.provider_upsert(info, clock.now()).unwrap();
+    let done = activity("claude-code", "cc", State::Succeeded);
+    upsert(&mut core, done, clock.now());
+    core.tick(clock.advance(11_000));
+
+    core.close_expanded(clock.now());
+    core.tick(clock.advance(10));
+    assert_eq!(pop_id(&core, clock.now()).as_deref(), Some("cc"));
+    core.tick(clock.advance(5_000));
+    assert_eq!(pop_id(&core, clock.now()), None);
+    assert!(core.snapshot(clock.now()).pop.is_none());
+}

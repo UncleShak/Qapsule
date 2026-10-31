@@ -155,26 +155,60 @@ pub fn set_region(window: &WebviewWindow, rects: &[Rect]) {
     }
 }
 
-/// Brings the capsule window forward and gives it keyboard focus. Returns the window
-/// that had the foreground before (as a number, so it can be kept across threads),
-/// unless that was this window or there was none.
-pub fn take_focus(window: &WebviewWindow) -> Option<isize> {
-    let own = hwnd(window);
-    let previous = unsafe { GetForegroundWindow() };
-    let _ = window.set_focus();
-    if previous.0.is_null() || Some(previous) == own {
-        None
-    } else {
-        Some(previous.0 as isize)
+/// Whether the window should hold keyboard focus (the hotkey opened the view), shared
+/// by the shell's updates and the new webview's first snapshot, so a webview that is
+/// recreated while focus is wanted still gets it, and one that is no longer wanted
+/// never does.
+#[derive(Default)]
+pub struct Focus(Mutex<FocusState>);
+
+#[derive(Default)]
+struct FocusState {
+    wanted: bool,
+    /// The window that had the foreground when focus was first wanted.
+    previous: Option<isize>,
+    /// The capsule window has been given focus for this request.
+    taken: bool,
+}
+
+impl Focus {
+    /// The core's current `focus`. `retake` is true when a new webview has just asked for
+    /// its snapshot, so a window created after the request is focused too.
+    pub fn follow(&self, wanted: bool, window: Option<&WebviewWindow>, retake: bool) {
+        let mut s = self.0.lock().unwrap();
+        let own = window.and_then(hwnd);
+        if wanted {
+            if !s.wanted {
+                s.wanted = true;
+                s.taken = false;
+                // Recorded at once, even if the webview doesn't exist yet.
+                let foreground = unsafe { GetForegroundWindow() };
+                s.previous = (!foreground.0.is_null() && Some(foreground) != own)
+                    .then_some(foreground.0 as isize);
+            }
+            if let Some(window) = window
+                && (!s.taken || retake)
+            {
+                s.taken = true;
+                let _ = window.set_focus();
+            }
+        } else if s.wanted {
+            s.wanted = false;
+            let previous = s.previous.take();
+            if std::mem::take(&mut s.taken)
+                && let Some(previous) = previous
+            {
+                give_back(own, previous);
+            }
+        }
     }
 }
 
-/// Puts the foreground back on `previous` (from `take_focus`), but only if that window
-/// still exists and the capsule still holds the foreground: if the user has clicked
-/// into another app meanwhile, that app keeps it.
-pub fn give_back_focus(window: Option<&WebviewWindow>, previous: isize) {
+/// Puts the foreground back on `previous`, but only if that window still exists and the
+/// capsule still holds the foreground: if the user has clicked into another app
+/// meanwhile, that app keeps it.
+fn give_back(own: Option<HWND>, previous: isize) {
     let target = HWND(previous as *mut std::ffi::c_void);
-    let own = window.and_then(hwnd);
     unsafe {
         if own.is_some_and(|own| GetForegroundWindow() == own) && IsWindow(Some(target)).as_bool() {
             let _ = SetForegroundWindow(target);

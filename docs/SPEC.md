@@ -88,7 +88,7 @@ The capsule hangs from the top edge of the screen, like Bloom: a small peek most
 
 **Expanded view**
 
-- Hovering the peek for 300 ms expands it to the main screen; moving away for 600 ms collapses it. The hotkey (default Ctrl+Alt+Space) opens it and keeps it open until Esc. A setting can require a click instead of hover.
+- The peek expands to the main screen when the pointer slows over it (under about 0.25 px/ms, then 60 ms) or after 180 ms of hovering; moving away collapses it after 300 ms (decision 7). The hotkey (default Ctrl+Alt+Space) opens it and keeps it open until Esc. A setting can require a click instead of hover.
 - Three screens: your widgets (left), main (centre) and system (right). Switch with the mouse wheel, arrow keys, the dots, or a touchpad swipe.
 - Each screen holds one to three widgets. Right-click → Edit screens: drag to swap, × to remove, + to add. A screen never goes below one widget.
 
@@ -299,7 +299,7 @@ dual_status = true
 do_not_disturb = false
 agents       = { pop = true,  details = true }
 music        = { pop = true,  details = true }   # song-change pop
-calendar     = { pop = true,  details = true, minutes_before = 10 }
+calendar     = { pop = true,  details = true, minutes_before = 10 }   # pops come from the reserved calendar: source
 downloads    = { pop = false }
 windows_apps = { pop = true,  details = false }  # needs Windows permission
 "windows:WhatsApp"        = { pop = true, details = true }   # per app: spaces become dashes
@@ -331,7 +331,7 @@ toggles = false   # Do Not Disturb, night light, energy saver
 pinned = [{ name = "web", port = 5173 }, { name = "api", port = 8080 }]
 ```
 
-Secrets are never in this file. A wrong or unknown setting is logged and replaced by its default, so a typo can't stop Capsule from starting.
+Secrets are never in this file. The iCal link is set with `qapsule calendar set-link`, which stores it in Windows Credential Manager (see docs/integrations/calendar.md). A wrong or unknown setting is logged and replaced by its default, so a typo can't stop Capsule from starting.
 
 ## Project structure
 

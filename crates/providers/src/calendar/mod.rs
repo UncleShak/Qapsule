@@ -250,6 +250,10 @@ impl<F: Fetcher, L: LinkSource> Provider<F, L> {
             .last_success
             .is_some_and(|at| now_i.duration_since(at) < REFRESH);
         if !fresh {
+            // Don't show the old view while the refresh runs: rebuild it from what we have.
+            if self.data.is_some() {
+                self.send_view((self.clock)());
+            }
             self.refresh(now_i).await;
         }
         let now = (self.clock)();
@@ -635,6 +639,36 @@ mod tests {
         h.calendar.main_screen(true);
         settle().await;
         assert_eq!(h.fetches(), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn opening_first_shows_the_cached_events_as_of_now() {
+        let mut h = harness(
+            ics(&[("Review", "20250310T081000Z", "20250310T084000Z")]),
+            Some(LINK),
+            false,
+        );
+        h.calendar.main_screen(true);
+        settle().await;
+        let first = ready(last_view(&mut h.views));
+        assert!(first.now.is_none() && first.next.len() == 1);
+        h.calendar.main_screen(false);
+        settle().await;
+
+        // Twenty minutes on, the event is under way; the refresh will fail.
+        *h.fake.fail.lock().unwrap() = Some(FetchError::status(503));
+        advance(20 * 60).await;
+        h.calendar.main_screen(true);
+        settle().await;
+        let views: Vec<_> = std::iter::from_fn(|| h.views.try_recv().ok()).collect();
+        assert_eq!(views.len(), 2, "the cached view, then the refreshed one");
+        let cached = ready(views.first().cloned());
+        assert_eq!(
+            cached.now.as_ref().map(|e| e.title.as_str()),
+            Some("Review")
+        );
+        assert!(!cached.stale);
+        assert!(ready(views.last().cloned()).stale);
     }
 
     #[tokio::test(start_paused = true)]
