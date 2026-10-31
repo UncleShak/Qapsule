@@ -55,6 +55,7 @@ Define these once as CSS custom properties in `ui/src/styles/tokens.css`. Compon
   --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   --font-text: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-icons: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace; /* commands shown in widget notes */
 
   /* Shape */
   --r-capsule: 32px;   /* expanded capsule bottom corners */
@@ -62,7 +63,8 @@ Define these once as CSS custom properties in `ui/src/styles/tokens.css`. Compon
   --r-peek-shoulder: 16px;
   --r-control: 10px;   /* glyph buttons, tiles, inputs */
   --r-row: 14px;       /* selection rows */
-  --r-art: 14px;       /* large album art; 8px for small art in the peek */
+  --r-art: 14px;       /* large album art */
+  --r-art-small: 8px;  /* small art in the peek */
 
   /* Motion (Fluent curves and durations) */
   --ease-out: cubic-bezier(0, 0, 0, 1);      /* entering, growing */
@@ -156,7 +158,7 @@ Widget slots inside the expanded capsule: small = **280 × 128**, wide = **600 �
 - **Details off:** app tile + app name + "New message".
 - **No quick reply.** Windows doesn't let one app use another app's reply action. Never design a reply box for third-party notifications.
 
-### Expanded (hover the peek 300ms; collapse 600ms after leaving)
+### Expanded (click the peek, or hover it with `expand_on = "hover"`; collapse 300 ms after leaving)
 Three screens: **Your widgets** (left) · **Main** (centre, default) · **System** (right). Pager: 4px dots at `--text-3` opacity 0.36, active = 16 × 4 bar in white, centred 14px below the capsule.
 
 ---

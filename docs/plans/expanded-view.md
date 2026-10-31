@@ -173,8 +173,8 @@ Ideas found during the night that are not part of milestone 6.
 
 - Proper weather glyphs: Segoe Fluent Icons has no weather set; pick an icon source that follows DESIGN.md.
 - An unknown city is geocoded again on every open; consider caching "not found" per city.
-- The weather city is read once at start; it updates when config reload lands.
-- Config reload (milestone 6 tray item): when it lands, the weather city and `[notifications] calendar` (pops, `minutes_before`) must follow it; today they apply after a restart.
-- Narrow displays: the expanded capsule's hit area is 1064 × 190 logical px and isn't clamped to the screen, so displays narrower than that (1920 × 1080 at 200%, 1280 × 800 at 125%) cut it off. Needs a design decision: shrink the capsule, or narrower slots.
+- ~~The weather city is read once at start.~~ Done 31 Oct (config reload, milestone-6-finish phase A).
+- ~~Config reload for the city and calendar settings.~~ Done 31 Oct (phase A).
+- ~~Narrow displays~~ (done 31 Oct, phase B): the expanded capsule's hit area is 1064 × 190 logical px and isn't clamped to the screen, so displays narrower than that (1920 × 1080 at 200%, 1280 × 800 at 125%) cut it off. Needs a design decision: shrink the capsule, or narrower slots.
 - `get_snapshot` can apply an older snapshot's `focus = true` after a close if a webview starts at the same moment as Esc; the next update corrects it. Consider sequence-numbered snapshots.
 - Outlook feeds with Windows time zone names (or custom VTIMEZONE) are read as local time; map Windows zone names or read VTIMEZONE.

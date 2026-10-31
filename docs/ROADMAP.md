@@ -119,10 +119,10 @@ Windows only tells an app about new notifications if the app has a signed packag
 
 **Milestone 6, "My day at a glance" (Fri 18 Dec)**
 
-- [x] Hover expands to the main screen; moving away collapses it; the hotkey opens it until Esc (built 31 Oct; awaiting manual checks).
-- [x] Main screen: weather (Open-Meteo, city in settings), time, current and next events (iCal link in Credential Manager), with the "starts in 10 minutes" pop. (built 31 Oct; awaiting manual checks)
-- [ ] Now playing in the peek, with optional song-change pops.
-- [ ] Tray icon: Do Not Disturb, start with Windows, quit. Config file with reload.
+- [x] A click (or hover, by setting) expands to the main screen; moving away collapses it; the hotkey opens it until Esc. Fits narrow displays.
+- [x] Main screen: weather (Open-Meteo, city in settings), time, the coming week of events (iCal link in Credential Manager), with the "starts in 10 minutes" pop.
+- [x] Now playing in the peek, with optional song-change pops.
+- [x] Tray icon: Do Not Disturb, start with Windows, quit. Config file with reload.
 
 **Milestone 7, "v0.1 in public" (Tue 22 Dec)**
 

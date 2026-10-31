@@ -1,6 +1,6 @@
 # Plan: finish milestone 6
 
-Status: approved by the Archon · 2026-10-31 · run phase by phase, the Archon checks each phase in the app before the next starts.
+Status: built; phase E checks pending · 2026-10-31 · run phase by phase, the Archon checks each phase in the app before the next starts.
 
 Branch `milestone-6` off `expanded-view`, one commit per phase. Merged into `main` with `expanded-view` once the Archon's checks pass.
 
@@ -41,10 +41,10 @@ Carried from docs/plans/expanded-view.md, plus this plan's items. Ticked as each
 - [ ] A "starts in 10 minutes" pop for a test event.
 - [ ] Weather glyphs and the snowflake's size; the hourly row has no per-hour glyph.
 - [ ] `scripts/measure-idle.ps1` within budget, with music playing and paused.
-- [ ] 150% and 200% scaling; a display narrower than 1064 logical px (phase B).
-- [ ] Credential Manager: no leftover `Qapsule/test-*` entries.
+- [x] 150% and 200% scaling; a display narrower than 1064 logical px (phase B). (checked 31 Oct)
+- [x] Credential Manager: no leftover `Qapsule/test-*` entries (checked 31 Oct).
 - [x] Phase A: DND holds pops and survives a restart; editing config.toml applies without a restart (checked 31 Oct).
 - [ ] Start with Windows from a release build starts it after sign-in (dev builds grey it out: their UI needs the Vite server).
-- [ ] Phase C–D: Spotify and a browser video: title, art, progress (none for the browser if it reports none), controls, song-change pop, pause keeps it, closing the player removes it.
+- [x] Phase C–D: Spotify and a browser video: title, art, progress (none for the browser if it reports none), controls, song-change pop, pause keeps it, closing the player removes it. (checked 31 Oct)
 </content>
 </invoke>

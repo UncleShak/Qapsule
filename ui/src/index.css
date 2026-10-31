@@ -820,7 +820,7 @@ button {
 .art-small {
   width: 28px;
   height: 28px;
-  border-radius: var(--r-art);
+  border-radius: var(--r-art-small);
 }
 
 .art-round {
