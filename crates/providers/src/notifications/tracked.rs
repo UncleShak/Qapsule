@@ -28,6 +28,12 @@ impl Tracked {
         }
     }
 
+    /// The source of a tracked toast, if it is known.
+    pub(crate) fn source_of(&self, id: &str) -> Option<String> {
+        self.map.get(id).map(|(source, _)| source.clone())
+    }
+
+    #[cfg(test)]
     pub(crate) fn remove(&mut self, id: &str) -> Option<(String, Option<String>)> {
         let value = self.map.remove(id)?;
         self.order.retain(|o| o != id);

@@ -1,14 +1,32 @@
 // The capsule: peek, pop and undo states drawn from the core's UiState.
 // It holds no state of its own beyond what animation needs.
 
-import { type CSSProperties, type ReactNode, type TransitionEvent, useEffect, useRef, useState } from "react";
+import {
+  type AnimationEvent,
+  type CSSProperties,
+  type ReactNode,
+  type TransitionEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { dismissPop, expandClick, press, setHitRects, swapPeek, undo } from "../bridge";
 import type { ItemView, PeekItem, PopView, UiState } from "../types";
 import { Arch, Shape } from "./Shape";
 import { Glyph, stateGlyph } from "./Glyph";
 import { MusicBubble, MusicMain, MusicPeek } from "./Music";
 import { Expanded } from "../widgets/Expanded";
-import { type Box, type Layout, type LayoutKind, type Rect, hitRects, layout, union, windowWidth } from "./geometry";
+import {
+  MUSIC_FRAME,
+  type Box,
+  type Layout,
+  type LayoutKind,
+  type Rect,
+  hitRects,
+  layout,
+  union,
+  windowWidth,
+} from "./geometry";
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -25,6 +43,58 @@ function kindOf(state: UiState): LayoutKind {
   return "idle";
 }
 
+/** The tint of the cover when the music holds the peek's main shape (the full pill, the ¾
+ *  or the media view); null under a pop, the undo bar or the expanded view, with the music
+ *  as the ¼, or when the core sent none. */
+function glowTint(state: UiState): string | null {
+  if (state.expanded || state.pop || state.undo || state.peek.kind === "idle") return null;
+  const main = state.peek.main;
+  return main.kind === "music" ? main.art_tint : null;
+}
+
+/** The glow layers to draw. A new tint stacks over the old one and fades in over 400 ms (a
+ *  CSS animation); once it has finished, `done` drops the old layer. No timers. */
+function useGlow(tint: string | null): [string[], () => void] {
+  const [glow, setGlow] = useState<{ tint: string | null; layers: string[] }>({
+    tint,
+    layers: tint ? [tint] : [],
+  });
+  if (glow.tint !== tint) {
+    // Derived during render: no tint, or reduced motion, is instant; else keep one old layer.
+    const layers = !tint ? [] : reducedMotion() ? [tint] : [...glow.layers.slice(-1), tint];
+    setGlow({ tint, layers });
+  }
+  return [glow.layers, () => setGlow((g) => (g.layers.length > 1 ? { ...g, layers: g.layers.slice(-1) } : g))];
+}
+
+/** The pill the plain glow fits: the lone pill, or the ¾ of a dual. */
+function plainGlowBox(state: UiState): Box {
+  return state.peek.kind === "dual" ? layout("dual").main : layout("music").main;
+}
+
+/** One glow element for one form: the pill's own box and radius (never per shape piece),
+ *  a static gradient centred on the cover. It follows the shape by translating; neither the
+ *  element nor its gradient is ever scaled. The two forms cross-fade by opacity. */
+function Glow({ form, rest, x, shown }: { form: "plain" | "media"; rest: Box; x: number | null; shown: boolean }) {
+  const media = form === "media";
+  const cover = media ? MUSIC_FRAME.art : MUSIC_FRAME.art * MUSIC_FRAME.artScale;
+  const cx = MUSIC_FRAME.pad + cover / 2;
+  // The media view also has the cover's own glow behind the larger cover: less colour here.
+  const strength = media ? 34 : 42;
+  return (
+    <div
+      className={`glow ${shown ? "on" : ""}`}
+      style={{
+        width: rest.w,
+        height: rest.h,
+        borderRadius: `0 0 ${rest.r}px ${rest.r}px`,
+        transform: `translateX(${x ?? rest.x}px)`,
+        background: `radial-gradient(ellipse 96px 60px at ${cx}px ${rest.h / 2}px, color-mix(in srgb, var(--art-tint) ${strength}%, transparent), transparent 100%)`,
+      }}
+    />
+  );
+}
+
 const isMusic = (k: LayoutKind) => k === "music" || k === "music_hover";
 
 interface Shown {
@@ -38,6 +108,10 @@ function motion(from: Shown | null, to: Shown): [string, number] {
   if (from && from.kind === to.kind && from.seq === to.seq && from.hovered !== to.hovered) {
     // Stretch elastically toward the pointer; ease back without bouncing.
     return to.hovered ? ["--spring-hover", 300] : ["--spring-collapse", 220];
+  }
+  // The media view opening over a dual peek: the elastic grow; closing settles back.
+  if (from?.kind === "dual" && to.kind === "music") {
+    return to.hovered ? ["--spring-hover", 300] : ["--spring-settle", 180];
   }
   return change(from?.kind ?? null, to.kind, from?.kind === "pop" && from.seq !== to.seq);
 }
@@ -55,7 +129,7 @@ function change(from: LayoutKind | null, to: LayoutKind, replaced: boolean): [st
 
 /** `hovered` is the pointer being over the capsule: a purely visual stretch, so it lives here. */
 export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }) {
-  let kind = kindOf(state);
+  const kind = kindOf(state);
   // A new webview first paints the capsule tucked (with nothing clickable), then slides
   // it in, so a recreated webview never flashes into place half-drawn.
   const [entered, setEntered] = useState(false);
@@ -70,6 +144,7 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
     };
   }, []);
   const tucked = !state.shown || !entered;
+  const [glowLayers, glowDone] = useGlow(glowTint(state));
   // The window is narrower on a narrow monitor and Rust may resize it at any time; the
   // layout follows its width. A resize event, not a timer.
   const [width, setWidth] = useState(windowWidth);
@@ -80,10 +155,6 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   }, []);
   // The expanded capsule never stretches.
   const stretched = hovered && !tucked && kind !== "expanded";
-  // A song's hover form needs the core to allow it and the pointer to be over the pill: the
-  // shape and the content change together, on the pointer's own event.
-  const wide = kind === "music_hover" && stretched;
-  if (kind === "music_hover" && !wide) kind = "music";
   // The shape stretches on hover; the content keeps its size and place.
   const l = layout(kind, stretched);
   // A song's content is laid out in its hover frame; the plain form is that under transforms.
@@ -92,11 +163,12 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   // Remember the last shape, to pick the spring and to cover both shapes while changing.
   // The spring is picked only when the shape changes, so an unrelated update (the
   // clock, a progress value) can't swap the curve under a running animation.
-  // A song's plain and hover forms are one shape that grows, so they share a kind here.
+  // A song's plain pill and its media view are one shape that grows, so they share a kind
+  // and the media view counts as the grown state.
   const now: Shown = {
     kind: isMusic(kind) ? "music" : kind,
     seq: state.pop?.seq ?? null,
-    hovered: isMusic(kind) ? wide : stretched,
+    hovered: kind === "music_hover" || (!isMusic(kind) && stretched),
   };
   const previous = useRef<Shown | null>(null);
   const chosen = useRef<[string, number]>(["--spring-settle", 180]);
@@ -110,8 +182,8 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   });
 
   // The clickable region covers the old and new shapes until the change finishes.
-  // The pointer enters through the plain pill, so the region can grow once the hover form
-  // shows; it shrinks when the collapse settles, like any other shape change.
+  // The region grows when the media view opens and shrinks when its collapse settles,
+  // like any other shape change.
   const hitKind: LayoutKind = kind;
   const shownRects = useRef<Rect[]>([]);
   const pending = useRef<Rect[] | null>(null);
@@ -158,8 +230,21 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
           <Shape box={l.side} />
           <Arch x={l.archX} />
           <Shape box={l.main} />
+          {/* The album colour glow (DESIGN.md section 3): one static element per form, in the
+              fill group (so the bars and the clock, in the content layer, never repaint it). */}
+          {glowLayers.map((tint) => (
+            <div
+              key={tint}
+              className="glow-layer"
+              style={{ "--art-tint": tint } as CSSProperties}
+              onAnimationEnd={(e: AnimationEvent) => e.target === e.currentTarget && glowDone()}
+            >
+              <Glow form="plain" rest={plainGlowBox(state)} x={kind === "music_hover" ? null : l.main.x} shown={kind !== "music_hover"} />
+              <Glow form="media" rest={layout("music_hover").main} x={l.main.x} shown={kind === "music_hover"} />
+            </div>
+          ))}
         </div>
-        <Content state={state} rest={base} now={l} wide={wide} />
+        <Content state={state} rest={base} now={l} />
       </div>
     </div>
   );
@@ -180,7 +265,7 @@ function Slot({ rest, now, className = "", children }: { rest: Box; now: Box; cl
   );
 }
 
-function Content({ state, rest, now, wide }: { state: UiState; rest: Layout; now: Layout; wide: boolean }) {
+function Content({ state, rest, now }: { state: UiState; rest: Layout; now: Layout }) {
   // A new key remounts the content, which replays its entrance.
   if (state.expanded) {
     return (
@@ -225,9 +310,9 @@ function Content({ state, rest, now, wide }: { state: UiState; rest: Layout; now
       <Slot rest={rest.main} now={now.main} key={`${dual ? "dual" : "one"}-main-${keyOf(main)}`}>
         {main.kind === "music" ? (
           dual ? (
-            <MusicMain music={main} />
+            <MusicMain music={main} clock={state.clock} />
           ) : (
-            <MusicPeek music={main} hover={wide && main.controls} />
+            <MusicPeek music={main} clock={state.clock} open={main.controls} />
           )
         ) : (
           <Item item={main} />
@@ -235,7 +320,11 @@ function Content({ state, rest, now, wide }: { state: UiState; rest: Layout; now
       </Slot>
       {side && (
         <Slot rest={rest.side} now={now.side} key={`side-${keyOf(side)}`}>
-          {side.kind === "music" ? <MusicBubble music={side} /> : <Bubble item={side} />}
+          {side.kind === "music" ? (
+            <MusicBubble music={side} />
+          ) : (
+            <Bubble item={side} />
+          )}
         </Slot>
       )}
     </>

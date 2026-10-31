@@ -4,10 +4,11 @@
 //! capsule out on hover, and works while the webview doesn't exist.
 //! Purely event-driven: no polling.
 
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 
+use qapsule_core::{Hotkey, HotkeyKey};
 use qapsule_server::Engine;
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
@@ -15,8 +16,8 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, RegisterHotKey, TME_LEAVE, TRACKMOUSEEVENT,
-    TrackMouseEvent, VK_SPACE,
+    HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, RegisterHotKey,
+    TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, UnregisterHotKey,
 };
 use windows::Win32::UI::Shell::{ABM_NEW, ABN_FULLSCREENAPP, APPBARDATA, SHAppBarMessage};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -34,6 +35,8 @@ use crate::monitor;
 const WM_APPBAR: u32 = WM_APP + 1;
 /// Asks the strip to show or hide itself to match `STRIP_WANTED`.
 const WM_STRIP: u32 = WM_APP + 2;
+/// Asks the watcher window to register the hotkey in `WANTED_HOTKEY`.
+const WM_HOTKEY_SET: u32 = WM_APP + 3;
 const HOTKEY_ID: i32 = 1;
 /// One-shot timer that checks the foreground window again after a fullscreen app opens.
 const FULLSCREEN_RECHECK_ID: usize = 1;
@@ -53,8 +56,105 @@ static STRIP_WANTED: AtomicBool = AtomicBool::new(false);
 /// The pointer is over the strip, and Windows will say when it leaves.
 static STRIP_TRACKING: AtomicBool = AtomicBool::new(false);
 
+/// What came of registering the hotkey.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HotkeyStatus {
+    Registered(Hotkey),
+    /// Another app holds it.
+    Taken(Hotkey),
+    Off,
+}
+
+/// The hotkey the app wants. The window thread reads it on `WM_HOTKEY_SET`, so
+/// the Win32 calls stay on the thread that owns the window.
+static WANTED_HOTKEY: Mutex<Option<Hotkey>> = Mutex::new(None);
+/// The watcher window, once it exists.
+static WATCHER: AtomicIsize = AtomicIsize::new(0);
+
+/// Asks for a different hotkey (or `None` for off). Safe from any thread; asking
+/// for the one already wanted does nothing.
+pub fn set_hotkey(hotkey: Option<Hotkey>) {
+    {
+        let mut wanted = WANTED_HOTKEY.lock().unwrap();
+        if *wanted == hotkey {
+            return;
+        }
+        *wanted = hotkey;
+    }
+    let window = WATCHER.load(Ordering::SeqCst);
+    // Before the window exists, `run` reads the wanted hotkey itself.
+    if window != 0 {
+        unsafe {
+            let _ = PostMessageW(Some(HWND(window as _)), WM_HOTKEY_SET, WPARAM(0), LPARAM(0));
+        }
+    }
+}
+
+/// The Win32 modifiers and virtual key for a hotkey.
+fn to_win32(hotkey: &Hotkey) -> (HOT_KEY_MODIFIERS, u32) {
+    let mut modifiers = MOD_NOREPEAT;
+    for (on, flag) in [
+        (hotkey.ctrl, MOD_CONTROL),
+        (hotkey.alt, MOD_ALT),
+        (hotkey.shift, MOD_SHIFT),
+        (hotkey.win, MOD_WIN),
+    ] {
+        if on {
+            modifiers |= flag;
+        }
+    }
+    let key = match hotkey.key {
+        // Letters and digits use their ASCII codes.
+        HotkeyKey::Char(c) if c.is_ascii_alphanumeric() => c as u32,
+        HotkeyKey::Char(c) => match c {
+            ';' => 0xBA,
+            '=' => 0xBB,
+            ',' => 0xBC,
+            '-' => 0xBD,
+            '.' => 0xBE,
+            '/' => 0xBF,
+            '`' => 0xC0,
+            '[' => 0xDB,
+            '\\' => 0xDC,
+            ']' => 0xDD,
+            _ => 0xDE, // the quote
+        },
+        HotkeyKey::F(n) => 0x70 + u32::from(n) - 1,
+        HotkeyKey::Space => 0x20,
+        HotkeyKey::Tab => 0x09,
+        HotkeyKey::Enter => 0x0D,
+        HotkeyKey::Esc => 0x1B,
+    };
+    (modifiers, key)
+}
+
+/// Registers what `WANTED_HOTKEY` says (dropping the old registration first) and
+/// reports the result. Runs on the watcher thread.
+unsafe fn apply_hotkey(hwnd: HWND) {
+    let wanted = *WANTED_HOTKEY.lock().unwrap();
+    let status = unsafe {
+        let _ = UnregisterHotKey(Some(hwnd), HOTKEY_ID);
+        match wanted {
+            None => HotkeyStatus::Off,
+            Some(hotkey) => {
+                let (modifiers, key) = to_win32(&hotkey);
+                if RegisterHotKey(Some(hwnd), HOTKEY_ID, modifiers, key).is_ok() {
+                    HotkeyStatus::Registered(hotkey)
+                } else {
+                    eprintln!("qapsule: hotkey {hotkey} is taken by another app");
+                    HotkeyStatus::Taken(hotkey)
+                }
+            }
+        }
+    };
+    if let Some(context) = CONTEXT.get() {
+        (context.on_hotkey)(status);
+    }
+}
+
 struct Context {
     engine: Engine,
+    on_hotkey: Box<dyn Fn(HotkeyStatus) + Send + Sync>,
     on_display_change: Box<dyn Fn() + Send + Sync>,
 }
 
@@ -73,9 +173,16 @@ pub fn set_edge_strip(visible: bool) {
 }
 
 /// Starts the watcher. Call once.
-pub fn spawn(engine: Engine, on_display_change: impl Fn() + Send + Sync + 'static) {
+pub fn spawn(
+    engine: Engine,
+    hotkey: Option<Hotkey>,
+    on_hotkey: impl Fn(HotkeyStatus) + Send + Sync + 'static,
+    on_display_change: impl Fn() + Send + Sync + 'static,
+) {
+    *WANTED_HOTKEY.lock().unwrap() = hotkey;
     let context = Context {
         engine,
+        on_hotkey: Box::new(on_hotkey),
         on_display_change: Box::new(on_display_change),
     };
     if CONTEXT.set(context).is_err() {
@@ -125,16 +232,8 @@ unsafe fn run() {
         };
         SHAppBarMessage(ABM_NEW, &mut appbar);
 
-        if RegisterHotKey(
-            Some(hwnd),
-            HOTKEY_ID,
-            MOD_CONTROL | MOD_ALT | MOD_NOREPEAT,
-            u32::from(VK_SPACE.0),
-        )
-        .is_err()
-        {
-            eprintln!("qapsule: Ctrl+Alt+Space is taken by another app; the hotkey is off");
-        }
+        WATCHER.store(hwnd.0 as isize, Ordering::SeqCst);
+        apply_hotkey(hwnd);
 
         let strip_class = w!("QapsuleEdgeStrip");
         RegisterClassW(&WNDCLASSW {
@@ -184,6 +283,7 @@ unsafe extern "system" fn window_proc(
     if let Some(context) = CONTEXT.get() {
         match msg {
             WM_HOTKEY if wparam.0 as i32 == HOTKEY_ID => context.engine.toggle_expanded(),
+            WM_HOTKEY_SET => unsafe { apply_hotkey(hwnd) },
             WM_APPBAR if wparam.0 as u32 == ABN_FULLSCREENAPP => {
                 let opening = lparam.0 != 0;
                 unsafe {
@@ -322,5 +422,48 @@ fn foreground_is_fullscreen() -> bool {
             || rect.right > m.right
             || rect.bottom > m.bottom;
         covers && !(IsZoomed(window).as_bool() && overhangs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn win32(text: &str) -> (HOT_KEY_MODIFIERS, u32) {
+        to_win32(&Hotkey::parse(text).unwrap().unwrap())
+    }
+
+    #[test]
+    fn hotkeys_map_to_win32_modifiers_and_virtual_keys() {
+        assert_eq!(
+            win32("Ctrl+Alt+Q"),
+            (MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x51)
+        );
+        assert_eq!(win32("Ctrl+Alt+Space").1, 0x20);
+        assert_eq!(
+            win32("Ctrl+Shift+Win+1"),
+            (MOD_CONTROL | MOD_SHIFT | MOD_WIN | MOD_NOREPEAT, 0x31)
+        );
+        assert_eq!(win32("Alt+F1").1, 0x70);
+        assert_eq!(win32("Alt+F24").1, 0x87);
+        assert_eq!(win32("Alt+Tab").1, 0x09);
+        assert_eq!(win32("Alt+Enter").1, 0x0D);
+        assert_eq!(win32("Alt+Esc").1, 0x1B);
+        let punctuation = [
+            ("`", 0xC0),
+            ("-", 0xBD),
+            ("=", 0xBB),
+            ("[", 0xDB),
+            ("]", 0xDD),
+            (";", 0xBA),
+            ("'", 0xDE),
+            (",", 0xBC),
+            (".", 0xBE),
+            ("/", 0xBF),
+            ("\\", 0xDC),
+        ];
+        for (key, code) in punctuation {
+            assert_eq!(win32(&format!("Ctrl+{key}")).1, code, "{key}");
+        }
     }
 }

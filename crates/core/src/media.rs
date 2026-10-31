@@ -1,14 +1,12 @@
 //! Now playing (decision 0008): the music Windows reports, ranked into the peek
-//! beside pushed activities, with a pop when the song changes. It is its own
+//! beside pushed activities, with a media view opened by a click on the cover. It is its own
 //! core input and never enters the activity store.
 
 use std::time::{Duration, Instant};
 
-use qapsule_protocol::{Activity, State};
-
 use crate::store::Key;
 use crate::view::MusicView;
-use crate::{Core, Effect, POP_DURATION};
+use crate::{Core, Effect};
 
 /// The fixed key of the music item: the peek swap and the button presses name it.
 pub const SOURCE: &str = "media:";
@@ -48,16 +46,10 @@ pub struct MediaState {
     pub artist: String,
     /// A URL on the `qapsule-art` scheme.
     pub art: Option<String>,
+    /// The wash colour picked from the cover, as red, green, blue.
+    pub art_tint: Option<[u8; 3]>,
     pub playing: bool,
     pub timeline: Option<Timeline>,
-}
-
-/// The song a pop announced, to tell later whether it is still the song playing.
-#[derive(Debug, Clone)]
-pub(crate) struct SongInfo {
-    pub app: String,
-    pub title: String,
-    pub artist: String,
 }
 
 /// How fast the position moves: the rate when it is a sane positive number, else not at all.
@@ -106,6 +98,12 @@ pub(crate) fn music_view(
             media.app.clone()
         },
         art: media.art.clone().filter(|_| details),
+        art_tint: media
+            .art
+            .as_ref()
+            .zip(media.art_tint)
+            .filter(|_| details)
+            .map(|(_, [r, g, b])| format!("#{r:02x}{g:02x}{b:02x}")),
         playing: media.playing,
         position_ms: timeline.map(|t| position_at(t, media.playing, now).as_millis() as u64),
         length_ms: timeline.map(|t| t.length.as_millis() as u64),
@@ -123,6 +121,7 @@ fn same_view(old: &MediaState, new: &MediaState, now: Instant) -> bool {
         && old.title == new.title
         && old.artist == new.artist
         && old.art == new.art
+        && old.art_tint == new.art_tint
         && old.playing == new.playing
         && match (&old.timeline, &new.timeline) {
             (None, None) => true,
@@ -145,33 +144,11 @@ impl Core {
         let Some(new) = media else {
             self.media = None;
             self.media_shown = None;
-            self.pops.retain(|p| !is_media_key(&p.key));
-            self.drop_media_undo();
+            self.media_open = false;
+            self.media_close_at = None;
             self.coalescer.mark(now);
             return;
         };
-
-        // The first song reported is the baseline and never pops. After that the song
-        // is remembered only while playing, so a song that starts paused (the next one
-        // of an album) pops when it plays, and pause, resume and seeking never do.
-        // A song without a title is still loading.
-        let mut changed = false;
-        if !new.title.is_empty() {
-            let song = (new.title.clone(), new.artist.clone());
-            match &self.last_song {
-                None => self.last_song = Some(song),
-                Some(before) if new.playing => {
-                    changed = *before != song;
-                    self.last_song = Some(song);
-                }
-                Some(_) => {}
-            }
-        }
-        if changed {
-            // Undoing the dismissal of the last song's pop would bring back a stale one.
-            self.drop_media_undo();
-            self.pop_song(&new, now);
-        }
 
         // Compared with what the UI was last told, so slow drift can't pile up unseen.
         let quiet = self
@@ -185,55 +162,25 @@ impl Core {
         self.media = Some(new);
     }
 
-    /// Forgets a dismissed song pop that could be brought back.
-    fn drop_media_undo(&mut self) {
-        if let Some(undo) = &mut self.undo {
-            if undo.pop.as_ref().is_some_and(|p| is_media_key(&p.key)) {
-                undo.pop = None;
-            }
-            if undo.removed.is_none() && undo.pop.is_none() {
-                self.undo = None;
-            }
+    /// The cover was clicked: opens the media view, or closes it. It opens only with music
+    /// playing, the expanded view closed and no pop or undo bar on screen.
+    pub fn media_click(&mut self, now: Instant) {
+        if self.media_open {
+            self.close_media_view(now);
+        } else if self.media.is_some() && !self.expanded.is_open() && !self.pop_or_undo_showing() {
+            self.media_open = true;
+            self.media_close_at = None;
+            self.coalescer.mark(now);
         }
     }
 
-    /// Whether a song pop announced the song that is playing now.
-    pub(crate) fn song_is_current(&self, song: &SongInfo) -> bool {
-        self.media
-            .as_ref()
-            .is_some_and(|m| m.title == song.title && m.artist == song.artist)
-    }
-
-    /// Pops the new song, unless Do Not Disturb or the music setting says no.
-    fn pop_song(&mut self, media: &MediaState, now: Instant) {
-        if self.settings.do_not_disturb || !self.settings.pop_setting(SOURCE).pop {
-            return;
+    /// Closes the media view, if open.
+    pub(crate) fn close_media_view(&mut self, now: Instant) {
+        self.media_close_at = None;
+        if self.media_open {
+            self.media_open = false;
+            self.coalescer.mark(now);
         }
-        let activity = Activity {
-            id: ID.into(),
-            source: SOURCE.into(),
-            title: media.title.clone(),
-            subtitle: Some(if media.artist.is_empty() {
-                media.app.clone()
-            } else {
-                media.artist.clone()
-            }),
-            state: State::Info,
-            progress: None,
-            icon: Some("music".into()),
-            expires_in: None,
-            actions: vec![],
-        };
-        self.push_pop(
-            media_key(),
-            activity,
-            Some(now + POP_DURATION),
-            Some(SongInfo {
-                app: media.app.clone(),
-                title: media.title.clone(),
-                artist: media.artist.clone(),
-            }),
-        );
     }
 
     /// A music button was pressed: the media provider carries it out.

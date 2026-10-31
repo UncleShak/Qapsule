@@ -65,6 +65,34 @@ button {
   transition: transform var(--shape-dur) var(--shape-ease);
 }
 
+/* The album colour glow (DESIGN.md section 3): one element per form, in the fill group.
+   Static gradients; only opacity and the translate that follows the shape change. */
+.glow-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: fade-in 400ms linear both;
+}
+
+.glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  /* It fades out over the top 10 px, so it never meets the shoulders. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 10px);
+  transition:
+    transform var(--shape-dur) var(--shape-ease),
+    opacity 120ms linear;
+}
+
+.glow.on {
+  opacity: 1;
+  transition:
+    transform var(--shape-dur) var(--shape-ease),
+    opacity 200ms linear 80ms;
+}
+
 .fill {
   position: absolute;
   inset: 0;
@@ -224,22 +252,123 @@ button {
   height: 20px;
 }
 
+/* The clock column is split: 52 px for the time (Hero small, with the date beside it), a
+   divider, then three 24 px rows of recent notifications: 52 + 4 + 72 = 128. */
 .widget-clock {
+  gap: 0;
+}
+
+/* The time sits dead centre (so the opening transform needs no x offset) with the date
+   beside it. */
+.clock-top {
+  display: grid;
+  flex: none;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
+  height: 52px;
+}
+
+.clock-top .widget-time {
+  grid-column: 2;
+  /* It opens as the big, centred clock and settles into place with the capsule. */
+  animation: clock-settle calc(var(--shape-dur) - var(--content-delay)) var(--spring-expand)
+    var(--content-delay) both;
+}
+
+.clock-top .widget-date {
+  grid-column: 3;
+  justify-self: start;
+  margin-left: 10px;
+  animation: grow-in var(--dur-normal) var(--spring-grow) calc(var(--content-delay) + 60ms) both;
+}
+
+@keyframes clock-settle {
+  from {
+    transform: translateY(var(--clock-dy)) scale(var(--clock-scale));
+  }
+}
+
+/* Rule 6: grow toward the final state, never from nothing. */
+@keyframes grow-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+  }
 }
 
 .widget-time {
   font-family: var(--font-display);
-  font-size: 72px;
+  font-size: 48px;
   font-weight: 600;
-  line-height: 72px;
-  letter-spacing: -0.03em;
+  line-height: 48px;
+  letter-spacing: -0.02em;
 }
 
 .widget-date {
   font-size: 13px;
+  color: var(--text-3);
+}
+
+.history-divider {
+  animation: fade-in var(--dur-normal) var(--ease-out) calc(var(--content-delay) + 60ms) both;
+  flex: none;
+  height: 1px;
+  margin-bottom: 3px;
+  background: var(--track);
+}
+
+.history {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.history-empty {
+  animation: grow-in var(--dur-normal) var(--spring-grow) calc(var(--content-delay) + 90ms) both;
+  margin: auto 0;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-3);
+}
+
+.history-row {
+  animation: grow-in var(--dur-normal) var(--spring-grow)
+    calc(var(--content-delay) + 90ms + var(--i, 0) * 30ms) both;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: var(--r-control);
+  text-align: left;
+}
+
+.history-action:hover {
+  background: var(--fill-hover);
+}
+
+.history-icon {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.history-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.history-at {
+  flex: none;
+  font-size: 12px;
   color: var(--text-3);
 }
 
@@ -662,20 +791,65 @@ button {
   clip-path: inset(0);
 }
 
-.art.music-art {
+/* The cover is a button: its click opens or closes the media view. */
+.music-cover {
   position: absolute;
   left: var(--m-pad);
   top: 50%;
   width: var(--m-art);
   height: var(--m-art);
   margin-top: calc(var(--m-art) / -2);
-  border-radius: 10px; /* 8 after the plain form's scale */
   transform: translateX(var(--m-art-dx)) scale(var(--m-art-scale));
   transition: transform var(--shape-dur) var(--shape-ease);
 }
 
-.music-hover .art.music-art {
+.music-hover .music-cover {
   transform: none;
+}
+
+/* A static blurred copy of the cover behind the 36 px cover (DESIGN.md: blur 12, inset 4,
+   opacity .45); only the wrapper fades, the blur itself never animates. */
+.music-glow {
+  position: absolute;
+  left: var(--m-pad);
+  top: 50%;
+  width: var(--m-art);
+  height: var(--m-art);
+  margin-top: calc(var(--m-art) / -2);
+  pointer-events: none;
+  animation: fade-in var(--dur-normal) var(--ease-out) var(--content-delay) both;
+}
+
+.music-glow img {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  object-fit: cover;
+  opacity: 0.45;
+  filter: blur(12px);
+}
+
+.art.art-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px; /* 8 after the plain form's scale */
+}
+
+/* The clock sits in the middle of the plain pill and gives way to title and artist. */
+.music-clock {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  transform: translate(-50%, -50%);
+  transition: opacity 120ms linear;
+}
+
+.music-hover .music-clock {
+  opacity: 0;
 }
 
 .music-title,
@@ -689,36 +863,20 @@ button {
 
 .music-title {
   top: 50%;
+  width: var(--m-title-w);
   margin-top: -8px;
   line-height: 16px;
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
-  transform: translateX(var(--m-title-dx));
-  transition:
-    transform var(--shape-dur) var(--shape-ease),
-    opacity 120ms linear;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 120ms linear;
 }
 
 .music-hover .music-title {
-  transform: translateY(-8px);
-}
-
-.music-title-plain {
-  width: var(--m-title-w-plain);
-}
-
-.music-title-hover {
-  width: var(--m-title-w);
-  opacity: 0;
-}
-
-.music-hover .music-title-plain {
-  opacity: 0;
-}
-
-.music-hover .music-title-hover {
   opacity: 1;
+  transition: opacity var(--dur-normal) var(--spring-grow);
 }
 
 /* Entering grows toward the final state on the grow spring; leaving only fades, fast, and
@@ -777,34 +935,18 @@ button {
   transition-delay: 40ms;
 }
 
-/* The progress line spans the hover pill's inner width; the plain form squeezes it on the
-   width axis only (so it stays 2px thick) and lifts it to the plain pill's bottom. */
+/* The progress line is part of the media view only: it mounts when the view opens and
+   fades in with the rest of its content (opacity only). */
 .bar.music-progress {
-  transform: translateY(calc(var(--m-progress-lift) * -1)) scaleX(var(--m-progress-scale));
-  transition: transform var(--shape-dur) var(--shape-ease);
-}
-
-.music-hover .bar.music-progress {
-  transform: none;
+  animation: fade-in var(--dur-normal) var(--spring-grow) var(--content-delay) both;
 }
 
 /* The dual peek's ¾ keeps its own plain layout, not the hover frame. */
-.music-dual .music-body {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 18px 0 16px;
-}
-
-.dual-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: 600;
+.dual-cover {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  margin-top: -14px;
 }
 
 .art {
@@ -824,8 +966,8 @@ button {
 }
 
 .art-round {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
 }
 
@@ -965,15 +1107,35 @@ button {
   }
 
   .media-button,
-  .art.music-art,
-  .music-title,
-  .bar.music-progress {
+  .music-cover {
     transition: none;
   }
 
-  .music-title-plain,
-  .music-title-hover {
-    transition: opacity 120ms linear;
+  .bar.music-progress {
+    animation: fade-in 120ms linear both;
+  }
+
+  /* The colour glow and the cover glow change instantly. */
+  .glow-layer,
+  .music-glow {
+    animation: none;
+  }
+
+  .glow,
+  .glow.on {
+    transition: none;
+  }
+
+  /* The clock column doesn't move: it cross-fades in with the rest. */
+  .clock-top .widget-time {
+    animation: none;
+  }
+
+  .clock-top .widget-date,
+  .history-divider,
+  .history-empty,
+  .history-row {
+    animation: fade-in 120ms linear both;
   }
 
   /* The artist and buttons only cross-fade. */

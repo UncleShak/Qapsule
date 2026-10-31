@@ -30,6 +30,24 @@ pub struct ExpandedView {
     pub date: String,
     pub weather: WeatherView,
     pub events: EventsView,
+    /// The last notifications that left the screen, newest first (decision 0009).
+    pub history: Vec<HistoryView>,
+}
+
+/// One notification that has left the screen, as the history lists it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HistoryView {
+    pub source: String,
+    pub id: String,
+    pub source_label: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub state: State,
+    pub icon: String,
+    /// The local time it arrived, like `09:41`.
+    pub at: String,
+    /// Pressing the entry does something.
+    pub actionable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -131,14 +149,15 @@ pub struct MusicView {
     pub artist: String,
     /// A URL on the `qapsule-art` scheme.
     pub art: Option<String>,
+    /// The colour of the album wash as `#rrggbb`; none without art or with details off.
+    pub art_tint: Option<String>,
     pub playing: bool,
     /// Where the song is as of this snapshot; the UI animates from here.
     pub position_ms: Option<u64>,
     pub length_ms: Option<u64>,
     /// How fast the position moves: 1.0 is normal, 0.0 when paused or not moving.
     pub rate: f64,
-    /// The hover form (artist, previous / pause / next) is allowed: music is the only item
-    /// and nothing is on top of it. The UI shows it while the pointer is over the pill.
+    /// The media view is open: the song's title, artist, buttons and progress line show.
     pub controls: bool,
 }
 

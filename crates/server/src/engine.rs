@@ -58,6 +58,10 @@ enum Command {
         id: String,
         action: String,
     },
+    PressHistory {
+        source: String,
+        id: String,
+    },
     ProviderUpsert(Box<Activity>),
     ProviderRemove {
         source: String,
@@ -69,6 +73,7 @@ enum Command {
     Pointer(bool),
     PointerSlowed,
     ExpandClick,
+    MediaClick,
     ToggleExpanded,
     CloseExpanded,
     Weather(WeatherView),
@@ -123,6 +128,11 @@ impl Engine {
         self.send(Command::Press { source, id, action });
     }
 
+    /// A notification in the expanded view's history was pressed.
+    pub fn press_history(&self, source: String, id: String) {
+        self.send(Command::PressHistory { source, id });
+    }
+
     /// An in-process provider adds or updates an activity in a reserved source.
     pub fn provider_upsert(&self, activity: Activity) {
         self.send(Command::ProviderUpsert(Box::new(activity)));
@@ -157,6 +167,11 @@ impl Engine {
     /// The peek was clicked outside any button.
     pub fn expand_click(&self) {
         self.send(Command::ExpandClick);
+    }
+
+    /// The song's cover was clicked: open or close the media view.
+    pub fn media_click(&self) {
+        self.send(Command::MediaClick);
     }
 
     /// The hotkey: open the expanded view and keep it open, or close it.
@@ -270,6 +285,15 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
                 Some(effect) => shell.run(effect),
                 None => {}
             },
+            Command::PressHistory { source, id } => match core.press_history(&source, &id, now) {
+                Some(Effect::Callback { conn, message }) => {
+                    if let Some(out) = conns.get(&conn) {
+                        let _ = out.send(message);
+                    }
+                }
+                Some(effect) => shell.run(effect),
+                None => {}
+            },
             Command::ProviderUpsert(activity) => {
                 if let Err(e) = core.provider_upsert(*activity, now) {
                     // The code only: never the notification text or the app's name.
@@ -283,6 +307,7 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
             Command::Pointer(over) => core.set_pointer(over, now),
             Command::PointerSlowed => core.pointer_slowed(now),
             Command::ExpandClick => core.expand_click(now),
+            Command::MediaClick => core.media_click(now),
             Command::ToggleExpanded => core.toggle_expanded(now),
             Command::CloseExpanded => core.close_expanded(now),
             Command::Weather(weather) => core.set_weather(weather, now),

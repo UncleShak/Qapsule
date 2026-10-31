@@ -37,7 +37,7 @@ Each phase ends green (`cargo fmt --all -- --check`, `cargo clippy --workspace -
 
 Carried from docs/plans/expanded-view.md, plus this plan's items. Ticked as each phase is checked.
 
-- [ ] Ctrl+Alt+Space opens and takes focus; Esc closes and focus returns. Hotkey, click another app, hotkey again: that app keeps focus.
+- [ ] Ctrl+Alt+Q opens and takes focus; Esc closes and focus returns. Hotkey, click another app, hotkey again: that app keeps focus.
 - [ ] A "starts in 10 minutes" pop for a test event.
 - [ ] Weather glyphs and the snowflake's size; the hourly row has no per-hour glyph.
 - [x] `scripts/measure-idle.ps1` within budget (checked 31 Oct, release build, 120–300 s): idle 0.11% CPU / 14 MB avg; capsule shown with music playing 0.43% (0.88% before stepping the bars and progress line); paused 0.01%; memory up to 133 MB of 150.

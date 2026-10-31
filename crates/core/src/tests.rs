@@ -67,7 +67,7 @@ fn end(core: &mut Core, source: &str, id: &str, state: State, now: Instant) -> S
 fn act(item: PeekItem) -> ItemView {
     match item {
         PeekItem::Activity(view) => view,
-        PeekItem::Music(_) => panic!("expected an activity"),
+        _ => panic!("expected an activity"),
     }
 }
 
@@ -778,6 +778,83 @@ fn settings_ignore_mistakes_and_keep_defaults() {
     let (settings, warnings) = Settings::from_toml("this is [not toml");
     assert_eq!(settings, Settings::default());
     assert_eq!(warnings.len(), 1);
+}
+
+#[test]
+fn hotkeys_parse_display_and_default() {
+    use crate::{Hotkey, HotkeyKey};
+    assert_eq!(Settings::default().hotkey, Some(Hotkey::DEFAULT));
+    assert_eq!(Hotkey::DEFAULT.to_string(), "Ctrl+Alt+Q");
+
+    let parsed = Hotkey::parse(" control + SHIFT + f12 ").unwrap().unwrap();
+    assert_eq!(
+        parsed,
+        Hotkey {
+            ctrl: true,
+            alt: false,
+            shift: true,
+            win: false,
+            key: HotkeyKey::F(12)
+        }
+    );
+    for text in [
+        "Ctrl+Alt+Q",
+        "Win+Space",
+        "Ctrl+Alt+Shift+Win+Esc",
+        "Alt+Tab",
+        "Ctrl+Enter",
+        "Ctrl+F24",
+        "Ctrl+1",
+        "Alt+`",
+        "Ctrl+\\",
+        "Ctrl+[",
+        "Win+/",
+        "Ctrl+'",
+    ] {
+        let hotkey = Hotkey::parse(text).unwrap().unwrap();
+        assert_eq!(hotkey.to_string(), text);
+        assert_eq!(Hotkey::parse(&hotkey.to_string()).unwrap(), Some(hotkey));
+    }
+    assert_eq!(Hotkey::parse("off").unwrap(), None);
+    assert_eq!(Hotkey::parse("OFF").unwrap(), None);
+    assert_eq!(Hotkey::parse("  ").unwrap(), None);
+
+    for bad in [
+        "Q",
+        "Shift+Q",
+        "Ctrl",
+        "Ctrl+",
+        "Ctrl+Alt+Q+W",
+        "Ctrl+Ctrl+Q",
+        "Ctrl+F25",
+        "Ctrl+F0",
+        "Ctrl+Home",
+        "Hyper+Q",
+        "Ctrl+\u{e9}",
+        "Ctrl+Alt+Space+",
+    ] {
+        assert!(Hotkey::parse(bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn the_hotkey_setting_reads_off_and_falls_back_with_a_warning() {
+    let read = |value: &str| Settings::from_toml(&format!("[general]\nhotkey = {value}\n"));
+    let (settings, warnings) = read("\"ctrl+alt+k\"");
+    assert_eq!(settings.hotkey.unwrap().to_string(), "Ctrl+Alt+K");
+    assert!(warnings.is_empty());
+    assert_eq!(read("\"off\"").0.hotkey, None);
+    assert_eq!(read("\"\"").0.hotkey, None);
+    for bad in ["\"Q\"", "\"Ctrl+Nope\"", "5", "true"] {
+        let (settings, warnings) = read(bad);
+        assert_eq!(settings.hotkey, Some(crate::Hotkey::DEFAULT), "{bad}");
+        assert_eq!(warnings.len(), 1, "{bad}");
+        assert!(warnings[0].starts_with("general.hotkey: "), "{warnings:?}");
+    }
+    assert_eq!(
+        Settings::from_toml("").0.hotkey,
+        Some(crate::Hotkey::DEFAULT)
+    );
 }
 
 #[test]
@@ -1965,6 +2042,7 @@ fn song(title: &str, artist: &str, playing: bool, now: Instant) -> MediaState {
         title: title.into(),
         artist: artist.into(),
         art: None,
+        art_tint: None,
         playing,
         timeline: Some(Timeline {
             position: Duration::from_secs(10),
@@ -1978,7 +2056,19 @@ fn song(title: &str, artist: &str, playing: bool, now: Instant) -> MediaState {
 fn music(item: PeekItem) -> MusicView {
     match item {
         PeekItem::Music(view) => view,
-        PeekItem::Activity(_) => panic!("expected music"),
+        other => panic!("expected music, got {other:?}"),
+    }
+}
+
+/// The music in the peek: the lone pill or the media view, or the side of a dual.
+fn peek_music(core: &Core, now: Instant) -> MusicView {
+    match core.snapshot(now).peek {
+        Peek::One { main } => music(main),
+        Peek::Dual { main, side } => match (main, side) {
+            (PeekItem::Music(view), _) | (_, PeekItem::Music(view)) => view,
+            _ => panic!("no music in the dual peek"),
+        },
+        Peek::Idle => panic!("no music in the peek"),
     }
 }
 
@@ -1994,131 +2084,8 @@ fn peek_kinds(core: &Core, now: Instant) -> Vec<String> {
     }
 }
 
-#[test]
-fn music_ranks_between_running_with_progress_and_running() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    let mut with_progress = activity("s", "progress", State::Running);
-    with_progress.progress = Some(Progress::Fraction(0.3));
-    upsert(
-        &mut core,
-        activity("s", "plain", State::Running),
-        clock.now(),
-    );
-    upsert(&mut core, with_progress, clock.now());
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["progress", "music"]);
-
-    upsert(
-        &mut core,
-        activity("s", "ask", State::NeedsInput),
-        clock.now(),
-    );
-    assert_eq!(peek_kinds(&core, clock.now()), ["ask", "progress"]);
-
-    let mut core = Core::new(Settings::default(), clock.now());
-    upsert(
-        &mut core,
-        activity("s", "plain", State::Running),
-        clock.now(),
-    );
-    upsert(&mut core, activity("s", "info", State::Info), clock.now());
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
-
-    let mut core = Core::new(Settings::default(), clock.now());
-    upsert(
-        &mut core,
-        activity("s", "done", State::Succeeded),
-        clock.now(),
-    );
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["music", "done"]);
-}
-
-#[test]
-fn music_alone_fills_the_peek_and_goes_with_set_media_none() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["music"]);
-    core.set_media(None, clock.now());
-    assert_eq!(core.snapshot(clock.now()).peek, Peek::Idle);
-}
-
-#[test]
-fn the_swap_works_with_the_music_key() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    upsert(
-        &mut core,
-        activity("s", "plain", State::Running),
-        clock.now(),
-    );
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
-    core.swap_peek(clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["plain", "music"]);
-    core.swap_peek(clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
-}
-
-fn lone_controls(core: &Core, now: Instant) -> bool {
-    match core.snapshot(now).peek {
-        Peek::One { main } => music(main).controls,
-        other => panic!("expected one item, got {other:?}"),
-    }
-}
-
-#[test]
-fn controls_are_allowed_only_on_a_lone_music_item_and_ignore_the_pointer() {
-    let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert!(lone_controls(&core, clock.now()));
-
-    // The pointer doesn't change the flag; the UI watches the pointer itself.
-    core.set_pointer(true, clock.advance(300));
-    assert!(lone_controls(&core, clock.now()));
-    core.set_pointer(false, clock.advance(10));
-    assert!(lone_controls(&core, clock.now()));
-
-    // Not with the expanded view open.
-    core.toggle_expanded(clock.advance(10));
-    core.close_expanded(clock.advance(10));
-    assert!(lone_controls(&core, clock.now()));
-
-    // Not with a second item: the peek is dual and nothing has controls.
-    upsert(
-        &mut core,
-        activity("s", "plain", State::Running),
-        clock.now(),
-    );
-    assert!(matches!(core.snapshot(clock.now()).peek, Peek::Dual { .. }));
-}
-
-#[test]
-fn controls_hide_under_a_pop_and_the_undo_bar() {
-    let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert!(lone_controls(&core, clock.now()));
-    core.set_media(Some(song("C", "D", true, clock.now())), clock.now());
-    assert!(!lone_controls(&core, clock.now()), "a pop is showing");
-    core.dismiss_pop(clock.now());
-    assert!(
-        !lone_controls(&core, clock.now()),
-        "the undo bar is showing"
-    );
-    core.tick(clock.advance(4_100));
-    assert!(lone_controls(&core, clock.now()));
-
-    // Nor under the expanded view.
-    core.toggle_expanded(clock.advance(10));
-    assert!(
-        !lone_controls(&core, clock.now()),
-        "the expanded view is open"
-    );
+fn media_open(core: &Core, now: Instant) -> bool {
+    peek_music(core, now).controls
 }
 
 #[test]
@@ -2127,10 +2094,7 @@ fn the_position_advances_while_playing_and_stops_at_the_length() {
     let mut core = Core::new(Settings::default(), clock.now());
     core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
     let position = |core: &Core, now| {
-        let Peek::One { main } = core.snapshot(now).peek else {
-            panic!()
-        };
-        let view = music(main);
+        let view = peek_music(core, now);
         (view.position_ms, view.length_ms)
     };
     assert_eq!(position(&core, clock.now()), (Some(10_000), Some(200_000)));
@@ -2173,135 +2137,197 @@ fn a_timeline_that_only_confirms_the_position_sends_no_update() {
 }
 
 #[test]
-fn a_new_song_pops_but_the_first_song_pause_resume_and_seek_do_not() {
-    let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    assert_eq!(pop_id(&core, clock.now()), None, "the first song seen");
-
-    core.set_media(Some(song("One", "Band", false, clock.now())), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    let mut seek = song("One", "Band", true, clock.now());
-    seek.timeline.as_mut().unwrap().position = Duration::from_secs(150);
-    core.set_media(Some(seek), clock.now());
-    assert_eq!(pop_id(&core, clock.now()), None, "pause, resume and seek");
-
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    let pop = core.snapshot(clock.now()).pop.unwrap();
-    assert_eq!(pop.source, "media:");
-    assert_eq!(pop.id, "now-playing");
-    assert_eq!(pop.title, "Two");
-    assert_eq!(pop.subtitle.as_deref(), Some("Band"));
-    assert_eq!(pop.icon, "music");
-    assert!(!pop.sticky);
-    assert!(core.store().is_empty(), "the pop never enters the store");
-
-    // Expiry works without a store entry.
-    core.tick(clock.advance(5_100));
-    assert_eq!(pop_id(&core, clock.now()), None);
-
-    // The same title under a new artist is a change.
-    core.set_media(Some(song("Two", "Other", true, clock.now())), clock.now());
-    assert!(pop_id(&core, clock.now()).is_some());
-    // Dismiss and undo work too.
-    core.dismiss_pop(clock.now());
-    assert_eq!(pop_id(&core, clock.now()), None);
-    core.undo(clock.now());
-    assert_eq!(pop_id(&core, clock.now()).as_deref(), Some("now-playing"));
-}
-
-#[test]
-fn the_next_song_that_starts_paused_pops_when_it_plays() {
+fn music_ranks_between_running_with_progress_and_running() {
     let clock = Clock::new();
     let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    core.set_media(Some(song("Two", "Band", false, clock.now())), clock.now());
-    assert_eq!(
-        pop_id(&core, clock.now()),
-        None,
-        "paused, not announced yet"
-    );
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    assert_eq!(pop_id(&core, clock.now()).as_deref(), Some("now-playing"));
-}
-
-#[test]
-fn pause_and_resume_of_the_same_song_never_pop() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    core.set_media(Some(song("One", "Band", false, clock.now())), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    assert_eq!(pop_id(&core, clock.now()), None);
-}
-
-#[test]
-fn a_first_song_seen_paused_is_the_baseline() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", false, clock.now())), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    assert_eq!(pop_id(&core, clock.now()), None);
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    assert!(pop_id(&core, clock.now()).is_some());
-}
-
-#[test]
-fn undoing_a_dismissed_song_pop_never_brings_back_a_stale_one() {
-    let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("A", "Band", true, clock.now())), clock.now());
-    core.set_media(Some(song("B", "Band", true, clock.now())), clock.now());
-    core.dismiss_pop(clock.now());
-    assert!(core.snapshot(clock.now()).undo);
-    // Skip to C while the undo bar shows: C's pop is current, B's undo is gone.
-    core.set_media(
-        Some(song("C", "Band", true, clock.advance(500))),
+    let mut with_progress = activity("s", "progress", State::Running);
+    with_progress.progress = Some(Progress::Fraction(0.3));
+    upsert(
+        &mut core,
+        activity("s", "plain", State::Running),
         clock.now(),
     );
-    core.undo(clock.now());
-    let pop = core.snapshot(clock.now()).pop.unwrap();
-    assert_eq!(pop.title, "C");
-    assert!(!core.snapshot(clock.now()).undo);
+    upsert(&mut core, with_progress, clock.now());
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["progress", "music"]);
 
-    // With pops off, the song still moves on and the undo of the old pop is stale.
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("A", "Band", true, clock.now())), clock.now());
-    core.set_media(Some(song("B", "Band", true, clock.now())), clock.now());
-    core.dismiss_pop(clock.now());
-    let mut off = Settings::default();
-    off.notifications.insert(
-        "music".into(),
-        PopSetting {
-            pop: false,
-            details: true,
-        },
+    upsert(
+        &mut core,
+        activity("s", "ask", State::NeedsInput),
+        clock.now(),
     );
-    core.set_settings(off, clock.now());
-    core.set_media(Some(song("C", "Band", true, clock.now())), clock.now());
-    core.undo(clock.now());
-    assert_eq!(pop_id(&core, clock.now()), None);
+    assert_eq!(peek_kinds(&core, clock.now()), ["ask", "progress"]);
+
+    let mut core = Core::new(Settings::default(), clock.now());
+    upsert(
+        &mut core,
+        activity("s", "plain", State::Running),
+        clock.now(),
+    );
+    upsert(&mut core, activity("s", "info", State::Info), clock.now());
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
 }
 
 #[test]
-fn undo_brings_back_the_dismissed_song_pop_when_the_song_is_unchanged() {
+fn music_alone_fills_the_peek_and_goes_with_set_media_none() {
     let clock = Clock::new();
     let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("A", "Band", true, clock.now())), clock.now());
-    core.set_media(Some(song("B", "Band", true, clock.now())), clock.now());
-    core.dismiss_pop(clock.now());
-    core.undo(clock.now());
-    assert_eq!(core.snapshot(clock.now()).pop.unwrap().title, "B");
-    core.dismiss_pop(clock.now());
-    core.undo(clock.now());
-    core.dismiss_pop(clock.now());
-    core.undo(clock.now());
-    core.dismiss_pop(clock.now());
-    assert_eq!(
-        pop_id(&core, clock.now()),
-        None,
-        "only one pop ever existed"
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["music"]);
+    core.set_media(None, clock.now());
+    assert_eq!(core.snapshot(clock.now()).peek, Peek::Idle);
+}
+
+#[test]
+fn the_swap_works_with_the_music_key() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    upsert(
+        &mut core,
+        activity("s", "plain", State::Running),
+        clock.now(),
     );
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
+    core.swap_peek(clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["plain", "music"]);
+    core.swap_peek(clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
+}
+
+#[test]
+fn a_song_change_makes_no_notice_and_no_pop() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
+    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
+    assert_eq!(pop_id(&core, clock.now()), None);
+    assert_eq!(peek_kinds(&core, clock.now()), ["music"]);
+    assert!(!media_open(&core, clock.now()));
+    assert_eq!(peek_music(&core, clock.now()).title, "Two");
+}
+
+#[test]
+fn a_click_on_the_cover_toggles_the_media_view() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.media_click(clock.now());
+    assert_eq!(
+        core.snapshot(clock.now()).peek,
+        Peek::Idle,
+        "no music, no view"
+    );
+
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    assert!(!media_open(&core, clock.now()));
+    core.media_click(clock.advance(10));
+    assert!(media_open(&core, clock.now()));
+    core.media_click(clock.advance(10));
+    assert!(!media_open(&core, clock.now()), "a second click closes it");
+}
+
+#[test]
+fn the_media_view_replaces_a_dual_peek_while_open() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    upsert(
+        &mut core,
+        activity("s", "plain", State::Running),
+        clock.now(),
+    );
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
+    core.media_click(clock.advance(10));
+    assert_eq!(peek_kinds(&core, clock.now()), ["music"]);
+    assert!(media_open(&core, clock.now()));
+    core.media_click(clock.advance(10));
+    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
+}
+
+#[test]
+fn the_media_view_closes_after_the_pointer_leaves_and_a_return_cancels_it() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    core.set_pointer(true, clock.now());
+    core.media_click(clock.advance(10));
+
+    core.set_pointer(false, clock.advance(10));
+    core.tick(clock.advance(250));
+    assert!(media_open(&core, clock.now()), "inside the grace");
+    core.tick(clock.advance(100));
+    assert!(!media_open(&core, clock.now()), "the grace ran out");
+
+    core.media_click(clock.advance(10));
+    core.set_pointer(true, clock.advance(10));
+    core.set_pointer(false, clock.advance(10));
+    core.set_pointer(true, clock.advance(100));
+    core.tick(clock.advance(1_000));
+    assert!(media_open(&core, clock.now()), "coming back cancelled it");
+    assert!(core.next_deadline().is_some());
+}
+
+#[test]
+fn the_media_view_closes_for_a_pop_the_expanded_view_the_webview_and_the_end_of_the_music() {
+    let mut clock = Clock::new();
+    let open = |core: &mut Core, clock: &mut Clock| {
+        core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+        core.media_click(clock.advance(10));
+        assert!(media_open(core, clock.now()));
+    };
+
+    let mut core = Core::new(Settings::default(), clock.now());
+    open(&mut core, &mut clock);
+    upsert(
+        &mut core,
+        activity("s", "done", State::Succeeded),
+        clock.now(),
+    );
+    assert!(core.snapshot(clock.now()).pop.is_some());
+    assert!(!media_open(&core, clock.now()), "a pop arrived");
+    // And it won't open over a pop.
+    core.media_click(clock.advance(10));
+    assert!(!media_open(&core, clock.now()));
+
+    let mut core = Core::new(Settings::default(), clock.now());
+    open(&mut core, &mut clock);
+    core.toggle_expanded(clock.advance(10));
+    core.close_expanded(clock.advance(10));
+    assert!(!media_open(&core, clock.now()), "the expanded view opened");
+    core.toggle_expanded(clock.advance(10));
+    core.media_click(clock.advance(10));
+    core.close_expanded(clock.advance(10));
+    assert!(
+        !media_open(&core, clock.now()),
+        "won't open under the expanded view"
+    );
+
+    let mut core = Core::new(Settings::default(), clock.now());
+    open(&mut core, &mut clock);
+    core.webview_gone(clock.advance(10));
+    assert!(!media_open(&core, clock.now()), "the webview went");
+
+    let mut core = Core::new(Settings::default(), clock.now());
+    open(&mut core, &mut clock);
+    core.set_media(None, clock.now());
+    core.set_media(Some(song("C", "D", true, clock.now())), clock.now());
+    assert!(!media_open(&core, clock.now()), "the music went away");
+}
+
+#[test]
+fn the_media_click_reaches_the_ui_at_once_after_a_quiet_spell() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    core.take_update(clock.now());
+    core.media_click(clock.advance(1_000));
+    // The coalescer's first update after a quiet spell goes out on the spot.
+    let update = core.take_update(clock.now()).expect("an update");
+    let Peek::One { main } = update.peek else {
+        panic!()
+    };
+    assert!(music(main).controls);
 }
 
 #[test]
@@ -2311,12 +2337,7 @@ fn position_and_rate_follow_the_playback_rate() {
     let mut fast = song("A", "B", true, clock.now());
     fast.timeline.as_mut().unwrap().rate = 1.3;
     core.set_media(Some(fast), clock.now());
-    let view = |core: &Core, now| {
-        let Peek::One { main } = core.snapshot(now).peek else {
-            panic!()
-        };
-        music(main)
-    };
+    let view = |core: &Core, now| peek_music(core, now);
     let v = view(&core, clock.advance(10_000));
     assert_eq!(v.position_ms, Some(23_000), "10 s plus 10 s at 1.3x");
     assert_eq!(v.rate, 1.3);
@@ -2369,10 +2390,7 @@ fn details_off_hides_the_song_in_the_peek_too() {
     let mut playing = song("Secret", "Someone", true, clock.now());
     playing.art = Some("http://qapsule-art.localhost/abc".into());
     core.set_media(Some(playing), clock.now());
-    let Peek::One { main } = core.snapshot(clock.now()).peek else {
-        panic!()
-    };
-    let v = music(main);
+    let v = peek_music(&core, clock.now());
     assert_eq!(v.title, "Now playing");
     assert_eq!(v.artist, "Spotify");
     assert_eq!(v.art, None);
@@ -2381,68 +2399,9 @@ fn details_off_hides_the_song_in_the_peek_too() {
     let mut playing = song("Secret", "Someone", true, clock.now());
     playing.art = Some("http://qapsule-art.localhost/abc".into());
     core.set_media(Some(playing), clock.now());
-    let Peek::One { main } = core.snapshot(clock.now()).peek else {
-        panic!()
-    };
-    let v = music(main);
+    let v = peek_music(&core, clock.now());
     assert_eq!((v.title.as_str(), v.artist.as_str()), ("Secret", "Someone"));
     assert!(v.art.is_some());
-}
-
-#[test]
-fn a_song_pop_follows_do_not_disturb_and_the_music_setting() {
-    let clock = Clock::new();
-    let change = |core: &mut Core| {
-        core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-        core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    };
-    let mut core = provider_core("[notifications]\ndo_not_disturb = true\n", &clock);
-    change(&mut core);
-    assert_eq!(pop_id(&core, clock.now()), None, "Do Not Disturb");
-
-    let mut core = provider_core("[notifications]\nmusic = { pop = false }\n", &clock);
-    change(&mut core);
-    assert_eq!(pop_id(&core, clock.now()), None, "music pops are off");
-
-    let mut core = provider_core("[notifications]\nmusic = { details = false }\n", &clock);
-    change(&mut core);
-    let pop = core.snapshot(clock.now()).pop.unwrap();
-    assert_eq!(pop.title, "Now playing");
-    assert_eq!(pop.subtitle.as_deref(), Some("Spotify"));
-}
-
-#[test]
-fn a_song_pop_waits_while_the_expanded_view_is_open() {
-    let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    core.toggle_expanded(clock.advance(10));
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    assert!(core.snapshot(clock.now()).pop.is_none());
-    core.tick(clock.advance(20_000));
-
-    core.close_expanded(clock.advance(10));
-    core.tick(clock.advance(10));
-    assert_eq!(
-        pop_id(&core, clock.now()).as_deref(),
-        Some("now-playing"),
-        "held, then shown with its full time"
-    );
-    core.tick(clock.advance(4_000));
-    assert!(pop_id(&core, clock.now()).is_some());
-    core.tick(clock.advance(1_100));
-    assert_eq!(pop_id(&core, clock.now()), None);
-}
-
-#[test]
-fn a_song_pop_ends_with_the_music() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    assert!(pop_id(&core, clock.now()).is_some());
-    core.set_media(None, clock.now());
-    assert_eq!(pop_id(&core, clock.now()), None);
 }
 
 #[test]
@@ -2483,4 +2442,363 @@ fn media_pops_use_the_music_category() {
         PopSetting::default()
     );
     assert!(PopSetting::default().pop && PopSetting::default().details);
+}
+
+// The notification history (decision 0009).
+
+fn history_ids(core: &Core) -> Vec<String> {
+    core.history.iter().map(|h| h.view.id.clone()).collect()
+}
+
+/// A finished activity: it pops once.
+fn pop_one(core: &mut Core, id: &str, actions: Vec<Action>, now: Instant) {
+    let mut a = activity("s", id, State::Succeeded);
+    a.actions = actions;
+    upsert(core, a, now);
+    assert_eq!(pop_id(core, now).as_deref(), Some(id));
+}
+
+#[test]
+fn a_dismissed_expired_or_handled_pop_enters_the_history() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_clock("09:41".into(), "Sat 31 Oct".into(), clock.now());
+
+    pop_one(&mut core, "dismissed", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(history_ids(&core), ["dismissed"]);
+    assert_eq!(core.history[0].view.at, "09:41");
+
+    core.set_clock("09:42".into(), "Sat 31 Oct".into(), clock.now());
+    pop_one(&mut core, "expired", vec![], clock.now());
+    core.tick(clock.advance(5_100));
+    assert_eq!(pop_id(&core, clock.now()), None);
+    assert_eq!(history_ids(&core), ["expired", "dismissed"]);
+    assert_eq!(core.history[0].view.at, "09:42", "when it arrived");
+
+    let open = action(
+        "open",
+        ActionKind::OpenUrl {
+            url: "https://example.com".into(),
+        },
+        true,
+    );
+    pop_one(&mut core, "handled", vec![open], clock.now());
+    core.press("s", "handled", "open", clock.now());
+    assert_eq!(history_ids(&core), ["handled", "expired", "dismissed"]);
+}
+
+#[test]
+fn the_history_keeps_three_newest_first_and_replaces_the_same_key() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    for id in ["a", "b", "c", "d"] {
+        pop_one(&mut core, id, vec![], clock.now());
+        core.tick(clock.advance(5_100));
+    }
+    assert_eq!(history_ids(&core), ["d", "c", "b"]);
+
+    // The same key again moves to the front and keeps one entry.
+    let mut again = activity("s", "b", State::Failed);
+    again.title = "second".into();
+    upsert(&mut core, again, clock.now());
+    core.tick(clock.advance(5_100));
+    assert_eq!(history_ids(&core), ["b", "d", "c"]);
+    assert_eq!(core.history[0].view.title, "second");
+}
+
+#[test]
+fn an_undone_dismissal_is_not_history() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    pop_one(&mut core, "a", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(history_ids(&core), ["a"]);
+    core.undo(clock.now());
+    assert!(history_ids(&core).is_empty());
+}
+
+#[test]
+fn song_changes_and_never_shown_pops_are_not_history() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
+    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
+    core.tick(clock.advance(5_100));
+    assert!(history_ids(&core).is_empty(), "a song change");
+
+    // Do Not Disturb stops pops before they exist.
+    let mut core = provider_core("[notifications]\ndo_not_disturb = true\n", &clock);
+    upsert(
+        &mut core,
+        activity("s", "quiet", State::Succeeded),
+        clock.now(),
+    );
+    assert!(history_ids(&core).is_empty());
+
+    // A pop that arrived while the view was open and was cleared before it closed was never seen.
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.toggle_expanded(clock.advance(10));
+    upsert(
+        &mut core,
+        activity("s", "unseen", State::Succeeded),
+        clock.now(),
+    );
+    core.handle(
+        1,
+        ClientMessage::Clear {
+            source: Some("s".into()),
+            id: Some("unseen".into()),
+        },
+        clock.now(),
+    );
+    core.close_expanded(clock.advance(10));
+    assert!(history_ids(&core).is_empty());
+
+    // One that was on screen before the view opened was seen, even if it goes while open.
+    let mut core = Core::new(Settings::default(), clock.now());
+    pop_one(&mut core, "seen", vec![], clock.now());
+    core.toggle_expanded(clock.advance(10));
+    core.handle(
+        1,
+        ClientMessage::Clear {
+            source: Some("s".into()),
+            id: Some("seen".into()),
+        },
+        clock.now(),
+    );
+    assert_eq!(history_ids(&core), ["seen"]);
+}
+
+#[test]
+fn history_text_honours_details() {
+    let clock = Clock::new();
+    let mut core = provider_core(
+        "[notifications]\n\"windows:Fake\" = { details = false }\n",
+        &clock,
+    );
+    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
+        .unwrap();
+    core.dismiss_pop(clock.now());
+    let entry = &core.history[0].view;
+    assert_ne!(entry.title, "n1 title");
+    assert_eq!(entry.subtitle, None);
+
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
+        .unwrap();
+    core.dismiss_pop(clock.now());
+    assert_eq!(core.history[0].view.title, "n1 title");
+    assert_eq!(
+        core.history[0].view.subtitle.as_deref(),
+        Some("n1 subtitle")
+    );
+}
+
+#[test]
+fn the_history_is_in_the_expanded_view_only() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    pop_one(&mut core, "a", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    assert!(core.snapshot(clock.now()).expanded.is_none());
+    core.toggle_expanded(clock.advance(10));
+    let history = core.snapshot(clock.now()).expanded.unwrap().history;
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].id, "a");
+    assert!(!history[0].actionable);
+}
+
+#[test]
+fn pressing_a_history_entry_runs_the_primary_action_and_removes_the_entry() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+
+    let open = action(
+        "open",
+        ActionKind::OpenUrl {
+            url: "https://example.com".into(),
+        },
+        true,
+    );
+    pop_one(&mut core, "link", vec![open], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(
+        core.press_history("s", "link", clock.now()),
+        Some(Effect::OpenUrl("https://example.com".into()))
+    );
+
+    let focus = action("focus", ActionKind::FocusWindow { pid: 42 }, true);
+    pop_one(&mut core, "window", vec![focus], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(
+        core.press_history("s", "window", clock.now()),
+        Some(Effect::FocusWindow(42))
+    );
+
+    // A Windows notification opens through the provider.
+    let mut w = activity("windows:Fake", "n1", State::Info);
+    w.actions = vec![action("open", ActionKind::Callback, true)];
+    core.provider_upsert(w, clock.now()).unwrap();
+    core.dismiss_pop(clock.now());
+    assert_eq!(
+        core.press_history("windows:Fake", "n1", clock.now()),
+        Some(Effect::Provider {
+            source: "windows:Fake".into(),
+            id: "n1".into(),
+            action: "open".into(),
+        })
+    );
+
+    // A client's callback goes to its connection (1 in these tests)...
+    let cb = action("go", ActionKind::Callback, true);
+    pop_one(&mut core, "call", vec![cb], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(
+        core.press_history("s", "call", clock.now()),
+        Some(Effect::Callback {
+            conn: 1,
+            message: ServerMessage::Action {
+                source: "s".into(),
+                id: "call".into(),
+                action: "go".into(),
+            },
+        })
+    );
+    // ...and is dropped once that connection has gone, but the entry stays.
+    let cb = action("go", ActionKind::Callback, true);
+    pop_one(&mut core, "gone", vec![cb], clock.now());
+    core.dismiss_pop(clock.now());
+    core.connection_closed(1);
+    assert_eq!(core.press_history("s", "gone", clock.now()), None);
+    assert!(core.history.iter().any(|h| h.view.id == "gone"));
+
+    // No action, no effect; an unknown entry, none either.
+    pop_one(&mut core, "plain", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(core.press_history("s", "plain", clock.now()), None);
+    assert_eq!(core.press_history("s", "nope", clock.now()), None);
+}
+
+#[test]
+fn the_history_clears_once_the_view_that_showed_it_closes() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    pop_one(&mut core, "a", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    pop_one(&mut core, "b", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+
+    // Just opening keeps the entries visible.
+    core.toggle_expanded(clock.advance(10));
+    let shown = core.snapshot(clock.now()).expanded.unwrap().history;
+    assert_eq!(shown.len(), 2);
+
+    // Closing clears them.
+    core.close_expanded(clock.advance(10));
+    assert!(history_ids(&core).is_empty());
+
+    // An entry filed after closing survives until the next close.
+    pop_one(&mut core, "c", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(history_ids(&core), ["c"]);
+    core.toggle_expanded(clock.advance(10));
+    assert_eq!(
+        core.snapshot(clock.now()).expanded.unwrap().history.len(),
+        1
+    );
+    core.close_expanded(clock.advance(10));
+    assert!(history_ids(&core).is_empty());
+}
+
+#[test]
+fn pressing_an_entry_removes_it_at_once() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    let open = action(
+        "open",
+        ActionKind::OpenUrl {
+            url: "https://example.com".into(),
+        },
+        true,
+    );
+    pop_one(&mut core, "a", vec![open], clock.now());
+    core.dismiss_pop(clock.now());
+    pop_one(&mut core, "b", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    core.toggle_expanded(clock.advance(10));
+    core.take_update(clock.now());
+    assert!(core.press_history("s", "a", clock.now()).is_some());
+    assert_eq!(history_ids(&core), ["b"]);
+    assert!(
+        core.take_update(clock.advance(300)).is_some(),
+        "the view is told"
+    );
+}
+
+fn tinted(art: Option<&str>, tint: Option<[u8; 3]>, now: Instant) -> MediaState {
+    MediaState {
+        art: art.map(Into::into),
+        art_tint: tint,
+        ..song("A", "B", true, now)
+    }
+}
+
+fn lone_tint(core: &Core, now: Instant) -> Option<String> {
+    let Peek::One { main } = core.snapshot(now).peek else {
+        panic!()
+    };
+    music(main).art_tint
+}
+
+#[test]
+fn the_tint_is_a_hex_colour_only_with_art_and_details() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    let url = "http://qapsule-art.localhost/x";
+    core.set_media(
+        Some(tinted(Some(url), Some([200, 40, 9]), clock.now())),
+        clock.now(),
+    );
+    assert_eq!(lone_tint(&core, clock.now()).as_deref(), Some("#c82809"));
+
+    // A tint without art (the cover failed) is not shown.
+    core.set_media(
+        Some(tinted(None, Some([200, 40, 9]), clock.now())),
+        clock.now(),
+    );
+    assert_eq!(lone_tint(&core, clock.now()), None);
+
+    // Art without a tint (a grey cover).
+    core.set_media(Some(tinted(Some(url), None, clock.now())), clock.now());
+    assert_eq!(lone_tint(&core, clock.now()), None);
+
+    // Details off hides it with the art.
+    let mut hidden = provider_core("[notifications]\nmusic = { details = false }\n", &clock);
+    hidden.set_media(
+        Some(tinted(Some(url), Some([200, 40, 9]), clock.now())),
+        clock.now(),
+    );
+    assert_eq!(lone_tint(&hidden, clock.now()), None);
+}
+
+#[test]
+fn a_tint_change_alone_is_a_visible_change() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    let url = "http://qapsule-art.localhost/x";
+    core.set_media(
+        Some(tinted(Some(url), Some([200, 40, 9]), clock.now())),
+        clock.now(),
+    );
+    core.take_update(clock.now());
+    core.set_media(
+        Some(tinted(Some(url), Some([10, 40, 200]), clock.now())),
+        clock.advance(300),
+    );
+    let state = core.take_update(clock.advance(300)).expect("an update");
+    let Peek::One { main } = state.peek else {
+        panic!()
+    };
+    assert_eq!(music(main).art_tint.as_deref(), Some("#0a28c8"));
 }

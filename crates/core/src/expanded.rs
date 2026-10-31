@@ -62,7 +62,7 @@ pub(crate) fn initial_weather(city: Option<&str>) -> WeatherView {
 
 impl Core {
     /// A pop or the undo bar is on screen (the user is about to press it).
-    fn pop_or_undo_showing(&self) -> bool {
+    pub(crate) fn pop_or_undo_showing(&self) -> bool {
         !self.pops.is_empty() || self.undo.is_some()
     }
 
@@ -132,6 +132,13 @@ impl Core {
     }
 
     fn open(&mut self, how: Open, now: Instant) {
+        // What is in the history now is being seen.
+        for entry in &mut self.history {
+            entry.seen = true;
+        }
+        // The media view gives way to the expanded view.
+        self.media_open = false;
+        self.media_close_at = None;
         self.expanded.open = how;
         self.expanded.expand_at = None;
         self.expanded.collapse_at = None;
@@ -145,6 +152,8 @@ impl Core {
             return;
         }
         self.expanded.open = Open::Closed;
+        // The history was seen: it starts afresh.
+        self.history.retain(|entry| !entry.seen);
         // Pops that arrived meanwhile have not been seen yet: give them their full time.
         for pop in &mut self.pops {
             if pop.until.is_some() {
@@ -153,13 +162,22 @@ impl Core {
         }
         // A pop whose activity ran out while nobody could see it is stale; a finished
         // activity's pop is its own copy and still shows.
-        let store = &self.store;
-        self.pops.retain(|pop| {
-            pop.until.is_none()
-                || crate::media::is_media_key(&pop.key)
-                || matches!(pop.activity.state, State::Succeeded | State::Failed)
-                || store.get(&pop.key).is_some()
-        });
+        let stale: Vec<_> = self
+            .pops
+            .iter()
+            .filter(|pop| {
+                !(pop.until.is_none()
+                    || crate::media::is_media_key(&pop.key)
+                    || matches!(pop.activity.state, State::Succeeded | State::Failed)
+                    || self.store.get(&pop.key).is_some())
+            })
+            .map(|pop| pop.key.clone())
+            .collect();
+        self.retire_where(|pop| stale.contains(&pop.key));
+        // What is left shows now.
+        for pop in &mut self.pops {
+            pop.shown = true;
+        }
         if let Some(undo) = &mut self.undo {
             undo.until = now + UNDO_DURATION;
         }

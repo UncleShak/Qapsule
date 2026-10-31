@@ -10,6 +10,7 @@ pub mod store;
 pub mod timing;
 pub mod view;
 
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use qapsule_protocol::{
@@ -19,13 +20,13 @@ use qapsule_protocol::{
 
 pub use media::{MediaState, Timeline};
 pub use presence::{Presence, PresenceEffect};
-pub use settings::{ExpandOn, Screen, WidgetConfig, WidgetKind, WidgetSize};
+pub use settings::{ExpandOn, Hotkey, HotkeyKey, Screen, WidgetConfig, WidgetKind, WidgetSize};
 pub use settings::{PopSetting, Settings, VisibilityMode};
 pub use store::{Entry, Key, Store};
 pub use timing::{Coalescer, RateLimiter};
 pub use view::{
-    ActionView, EventNext, EventNow, EventsReady, EventsView, ExpandedView, HourView, ItemView,
-    MusicView, Peek, PeekItem, PopView, UiState, WeatherReady, WeatherView,
+    ActionView, EventNext, EventNow, EventsReady, EventsView, ExpandedView, HistoryView, HourView,
+    ItemView, MusicView, Peek, PeekItem, PopView, UiState, WeatherReady, WeatherView,
 };
 
 /// Identifies one pipe connection.
@@ -77,8 +78,32 @@ struct Pop {
     /// `None` for pops that stay until handled.
     until: Option<Instant>,
     seq: u64,
-    /// The song a music pop announced, for its player name and for undo.
-    song: Option<media::SongInfo>,
+    /// The local time it arrived, for the history.
+    at: String,
+    /// It has been on screen. A pop that arrived while the expanded view was open has not,
+    /// until the view closes.
+    shown: bool,
+}
+
+/// How many notifications the history keeps.
+const MAX_HISTORY: usize = 3;
+
+/// What pressing a history entry does: its pop's primary action, and who to call back.
+#[derive(Debug, Clone)]
+struct HistoryAction {
+    id: String,
+    kind: ActionKind,
+    /// The pipe connection that owned the activity, while it is still connected.
+    conn: Option<ConnId>,
+}
+
+/// A notification that left the screen. Memory only, like all notification text.
+#[derive(Debug, Clone)]
+struct HistoryEntry {
+    view: HistoryView,
+    action: Option<HistoryAction>,
+    /// It was in the history while the expanded view was open: it goes when the view closes.
+    seen: bool,
 }
 
 /// One thing the peek can rank.
@@ -99,6 +124,8 @@ pub struct Core {
     settings: Settings,
     /// Waiting pops; the last one is on screen.
     pops: Vec<Pop>,
+    /// The last notifications that left the screen, newest first.
+    history: VecDeque<HistoryEntry>,
     pop_seq: u64,
     /// The top two peek items, when the user has swapped them.
     swapped: Option<(Key, Key)>,
@@ -111,10 +138,12 @@ pub struct Core {
     events: EventsView,
     /// What Windows is playing, as the media provider last said.
     media: Option<MediaState>,
-    /// The last song seen (title, artist), kept while nothing plays, to spot a change.
-    last_song: Option<(String, String)>,
     /// The music state the UI was last told about, to judge whether a new report is news.
     media_shown: Option<MediaState>,
+    /// The media view (decision 0010) is open: the 400 x 56 song form replaces the peek.
+    media_open: bool,
+    /// When an open media view closes because the pointer left it.
+    media_close_at: Option<Instant>,
     pointer_over: bool,
     hover_until: Option<Instant>,
     coalescer: Coalescer,
@@ -128,6 +157,7 @@ impl Core {
             store: Store::default(),
             settings,
             pops: Vec::new(),
+            history: VecDeque::new(),
             pop_seq: 0,
             swapped: None,
             undo: None,
@@ -139,8 +169,9 @@ impl Core {
             // The calendar provider says `NoLink` when no link is set.
             events: EventsView::Loading,
             media: None,
-            last_song: None,
             media_shown: None,
+            media_open: false,
+            media_close_at: None,
             pointer_over: false,
             hover_until: None,
             coalescer: Coalescer::new(UI_UPDATE_INTERVAL),
@@ -198,7 +229,7 @@ impl Core {
             }
             ClientMessage::Clear { source, id } => {
                 let removed = self.store.clear(source.as_deref(), id.as_deref());
-                self.pops.retain(|p| !removed.contains(&p.key));
+                self.retire_where(|p| removed.contains(&p.key));
                 self.coalescer.mark(now);
                 ServerMessage::Ok
             }
@@ -226,7 +257,7 @@ impl Core {
             Err(e) if e.code == ErrorCode::TooManyActivities => {
                 if let Some(oldest) = self.store.oldest_in(&key.0) {
                     self.store.remove(&oldest);
-                    self.pops.retain(|p| p.key != oldest);
+                    self.retire_where(|p| p.key == oldest);
                     // Mark now, so a failed retry still leaves a consistent UI.
                     self.coalescer.mark(now);
                 }
@@ -242,7 +273,7 @@ impl Core {
     pub fn provider_remove(&mut self, source: &str, id: &str, now: Instant) {
         let key = (source.to_string(), id.to_string());
         if self.store.remove(&key).is_some() {
-            self.pops.retain(|p| p.key != key);
+            self.retire_where(|p| p.key == key);
         }
         if let Some(undo) = &mut self.undo {
             if undo.removed.as_ref().is_some_and(|(k, _)| *k == key) {
@@ -287,7 +318,7 @@ impl Core {
             pop.activity = activity.clone();
         }
         if state != State::NeedsInput {
-            self.pops.retain(|p| p.key != key || p.until.is_some());
+            self.retire_where(|p| p.key == key && p.until.is_none());
         }
 
         let pops = match state {
@@ -299,36 +330,125 @@ impl Core {
             return;
         }
         let until = (state != State::NeedsInput).then_some(now + POP_DURATION);
-        self.push_pop(key, activity, until, None);
+        self.push_pop(key, activity, until);
     }
 
     /// Shows `activity` as a pop in place of any earlier pop for `key`.
-    fn push_pop(
-        &mut self,
-        key: Key,
-        activity: Activity,
-        until: Option<Instant>,
-        song: Option<media::SongInfo>,
-    ) {
+    fn push_pop(&mut self, key: Key, activity: Activity, until: Option<Instant>) {
         self.pops.retain(|p| p.key != key);
+        // A pop covers the media view: it closes.
+        self.media_open = false;
+        self.media_close_at = None;
         self.pop_seq += 1;
         self.pops.push(Pop {
             key,
             activity,
             until,
             seq: self.pop_seq,
-            song,
+            at: self.clock.clone(),
+            shown: !self.expanded.is_open(),
         });
         if self.pops.len() > MAX_POPS {
             // Drop the oldest timed pop; a pop waiting for input goes only if all are.
             let victim = self.pops.iter().position(|p| p.until.is_some());
-            self.pops.remove(victim.unwrap_or(0));
+            let gone = self.pops.remove(victim.unwrap_or(0));
+            self.retire(gone);
         }
+    }
+
+    /// Takes the pops `gone` picks off the screen and files them in the history.
+    fn retire_where(&mut self, gone: impl Fn(&Pop) -> bool) {
+        let (gone_pops, kept): (Vec<Pop>, Vec<Pop>) = std::mem::take(&mut self.pops)
+            .into_iter()
+            .partition(|p| gone(p));
+        self.pops = kept;
+        for pop in gone_pops {
+            self.retire(pop);
+        }
+    }
+
+    /// Files a pop that left the screen as the newest history entry, replacing an older
+    /// one with the same key. A pop that was never on screen is not kept. The text is the
+    /// pop's own, honouring the source's details setting now.
+    fn retire(&mut self, pop: Pop) {
+        if !pop.shown {
+            return;
+        }
+        let activity = &pop.activity;
+        let details = self.settings.pop_setting(&activity.source).details;
+        let action = view::primary_action(activity)
+            .filter(|a| a.kind != ActionKind::Dismiss)
+            .map(|a| HistoryAction {
+                id: a.id.clone(),
+                kind: a.kind.clone(),
+                conn: self.store.get(&pop.key).and_then(|e| e.owner),
+            });
+        let view = HistoryView {
+            source: activity.source.clone(),
+            id: activity.id.clone(),
+            source_label: view::source_label(&activity.source),
+            title: if details {
+                activity.title.clone()
+            } else {
+                view::generic_title(&activity.source, activity.state).into()
+            },
+            subtitle: details.then(|| activity.subtitle.clone()).flatten(),
+            state: activity.state,
+            icon: view::icon_for(activity),
+            at: pop.at.clone(),
+            actionable: action.is_some(),
+        };
+        self.history
+            .retain(|h| (&h.view.source, &h.view.id) != (&pop.key.0, &pop.key.1));
+        let seen = self.expanded.is_open();
+        self.history.push_front(HistoryEntry { view, action, seen });
+        self.history.truncate(MAX_HISTORY);
+    }
+
+    /// A history entry was pressed: runs its pop's primary action the way the pop would.
+    /// The entry is removed at once. A callback to a connection that has gone is dropped,
+    /// and the entry stays.
+    pub fn press_history(&mut self, source: &str, id: &str, now: Instant) -> Option<Effect> {
+        let index = self
+            .history
+            .iter()
+            .position(|h| h.view.source == source && h.view.id == id)?;
+        let action = self.history[index].action.as_ref()?;
+        let effect = match &action.kind {
+            ActionKind::OpenUrl { url } => Some(Effect::OpenUrl(url.clone())),
+            ActionKind::FocusWindow { pid } => Some(Effect::FocusWindow(*pid)),
+            ActionKind::Callback if is_reserved_source(source) => Some(Effect::Provider {
+                source: source.into(),
+                id: id.into(),
+                action: action.id.clone(),
+            }),
+            ActionKind::Callback => action.conn.map(|conn| Effect::Callback {
+                conn,
+                message: ServerMessage::Action {
+                    source: source.into(),
+                    id: id.into(),
+                    action: action.id.clone(),
+                },
+            }),
+            ActionKind::Dismiss => None,
+        };
+        if effect.is_some() {
+            self.history.remove(index);
+            self.coalescer.mark(now);
+        }
+        effect
     }
 
     /// A client disconnected. Its activities stay, but can no longer call it back.
     pub fn connection_closed(&mut self, conn: ConnId) {
         self.store.forget_owner(conn);
+        // A history entry can no longer call a client that has gone.
+        for entry in &mut self.history {
+            if entry.action.as_ref().is_some_and(|a| a.conn == Some(conn)) {
+                entry.action = None;
+                entry.view.actionable = false;
+            }
+        }
     }
 
     /// A button was pressed on an activity or its pop.
@@ -367,6 +487,9 @@ impl Core {
             ActionKind::Dismiss => {
                 let removed = self.store.remove(&key).map(|e| (key.clone(), e));
                 let pop = self.take_pop(&key);
+                if let Some(pop) = &pop {
+                    self.retire(pop.clone());
+                }
                 self.undo = Some(Undo {
                     until: now + UNDO_DURATION,
                     pop,
@@ -377,7 +500,9 @@ impl Core {
             }
         };
         // Any other button counts as handling the pop.
-        self.take_pop(&key);
+        if let Some(pop) = self.take_pop(&key) {
+            self.retire(pop);
+        }
         self.coalescer.mark(now);
         effect
     }
@@ -393,6 +518,7 @@ impl Core {
             return;
         }
         if let Some(pop) = self.pops.pop() {
+            self.retire(pop.clone());
             self.undo = Some(Undo {
                 until: now + UNDO_DURATION,
                 pop: Some(pop),
@@ -411,11 +537,9 @@ impl Core {
             self.store.restore(key, entry);
         }
         if let Some(mut pop) = undo.pop {
-            // A song pop for a song that has since changed is stale.
-            if pop.song.as_ref().is_some_and(|s| !self.song_is_current(s)) {
-                self.coalescer.mark(now);
-                return;
-            }
+            // It is on screen again, so it is not history.
+            self.history
+                .retain(|h| (&h.view.source, &h.view.id) != (&pop.key.0, &pop.key.1));
             // A pop that came after the dismissal is the newer one; never show two.
             self.pops.retain(|p| p.key != pop.key);
             if pop.until.is_some() {
@@ -445,10 +569,14 @@ impl Core {
         if over {
             self.pointer_over = true;
             self.hover_until = None;
+            self.media_close_at = None;
             self.expanded_pointer_entered(now);
         } else if self.pointer_over {
             self.pointer_over = false;
             self.hover_until = Some(now + HOVER_GRACE);
+            if self.media_open {
+                self.media_close_at = Some(now + COLLAPSE_GRACE);
+            }
             self.expanded_pointer_left(now);
         }
         self.coalescer.mark(now);
@@ -487,7 +615,7 @@ impl Core {
             self.expanded.cancel_dwell();
         }
         if self.settings.do_not_disturb {
-            self.pops.clear();
+            self.retire_where(|_| true);
         } else if dnd_ended {
             self.pop_held(now);
         }
@@ -518,13 +646,17 @@ impl Core {
         // A finished activity's pop keeps its own timer; a waiting one goes with its activity.
         // While the view is open nobody sees the pops, so timed ones wait.
         let open = self.expanded.is_open();
-        self.pops.retain(|p| {
-            p.until
+        self.retire_where(|p| {
+            !p.until
                 .map_or(!expired.contains(&p.key), |until| open || until > now)
         });
         changed |= self.pops.len() != before;
         if !open && self.undo.as_ref().is_some_and(|u| u.until <= now) {
             self.undo = None;
+            changed = true;
+        }
+        if self.media_close_at.is_some_and(|at| at <= now) {
+            self.close_media_view(now);
             changed = true;
         }
         if self.hover_until.is_some_and(|until| until <= now) {
@@ -552,6 +684,7 @@ impl Core {
                 .map(|u| u.until)
                 .filter(|_| !self.expanded.is_open()),
             self.hover_until,
+            self.media_close_at,
             self.coalescer.due(),
             self.presence.next_deadline(),
         ]
@@ -584,6 +717,7 @@ impl Core {
             self.pointer_over = false;
             self.expanded_pointer_left(now);
         }
+        self.close_media_view(now);
         self.presence.webview_gone(now)
     }
 
@@ -618,6 +752,7 @@ impl Core {
                 date: self.date.clone(),
                 weather: self.weather.clone(),
                 events: self.events.clone(),
+                history: self.history.iter().map(|h| h.view.clone()).collect(),
             }),
             focus: self.expanded.is_pinned(),
         }
@@ -658,17 +793,20 @@ impl Core {
                 PeekItem::Music(media::music_view(media, controls, details, now))
             }
         };
+        // While the media view is open the song replaces the whole peek, dual or not.
+        if let (true, Some(media)) = (self.media_open, &self.media) {
+            return Peek::One {
+                main: PeekItem::Music(media::music_view(media, true, details, now)),
+            };
+        }
         let ranked = self.peek_ranked();
-        // The hover form is allowed on a lone music item with nothing on top of it. The
-        // pointer is the UI's to watch: it shows the form at once, not after an update.
-        let controls = !self.expanded.is_open() && self.pops.is_empty() && self.undo.is_none();
         match ranked.as_slice() {
             [] => Peek::Idle,
             [(_, only)] => Peek::One {
-                main: item(only, controls),
+                main: item(only, false),
             },
             [(_, first), ..] if !self.settings.dual_status => Peek::One {
-                main: item(first, controls),
+                main: item(first, false),
             },
             [(a, first), (b, second), ..] => {
                 let swapped = self.swapped.as_ref() == Some(&(a.clone(), b.clone()));
@@ -701,8 +839,7 @@ impl Core {
             subtitle: if details {
                 activity.subtitle.clone()
             } else {
-                // A song pop with details off still names the player.
-                pop.song.as_ref().map(|s| s.app.clone())
+                None
             },
             state: activity.state,
             icon: view::icon_for(activity),
