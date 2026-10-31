@@ -86,8 +86,8 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   if (kind === "music_hover" && !wide) kind = "music";
   // The shape stretches on hover; the content keeps its size and place.
   const l = layout(kind, stretched);
-  // A song's content is laid out for its plain shape and the hover form grows around it.
-  const base = layout(kind === "music_hover" ? "music" : kind);
+  // A song's content is laid out in its hover frame; the plain form is that under transforms.
+  const base = layout(isMusic(kind) ? "music_hover" : kind);
 
   // Remember the last shape, to pick the spring and to cover both shapes while changing.
   // The spring is picked only when the shape changes, so an unrelated update (the

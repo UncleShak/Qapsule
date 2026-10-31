@@ -636,9 +636,10 @@ button {
   color: var(--text-1);
 }
 
-/* The song in the peek. The slot is the plain 280 x 44 pill; the hover form is the same
-   elements moving and fading on the shape's own spring, so nothing snaps. Everything is
-   placed absolutely from the slot's left edge, centred on its middle line. */
+/* The song in the peek. Its slot is the 400 x 56 hover pill, centred on the shape, and every
+   element is laid out at its hover position (sizes come from MUSIC_FRAME in geometry.ts, set
+   as --m-* variables). The plain 280 x 44 form is the same elements under constant
+   transforms; all of them move on the shape's own spring, so nothing snaps. */
 .music {
   position: relative;
   width: 100%;
@@ -651,28 +652,26 @@ button {
   text-align: left;
 }
 
-/* Drawn at 36 px and scaled to 28 px (radius 8 after scaling) in the plain form. */
 .art.music-art {
   position: absolute;
-  left: 12px;
+  left: var(--m-pad);
   top: 50%;
-  width: 36px;
-  height: 36px;
-  margin-top: -18px;
-  border-radius: 10px;
-  transform: scale(0.7778);
+  width: var(--m-art);
+  height: var(--m-art);
+  margin-top: calc(var(--m-art) / -2);
+  border-radius: 10px; /* 8 after the plain form's scale */
+  transform: translateX(var(--m-art-dx)) scale(var(--m-art-scale));
   transition: transform var(--shape-dur) var(--shape-ease);
 }
 
-.music-hover .music-art {
+.music-hover .art.music-art {
   transform: none;
 }
 
 .music-title,
 .music-artist {
   position: absolute;
-  left: 54px;
-  width: 170px;
+  left: var(--m-title-left);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -685,11 +684,31 @@ button {
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
-  transition: transform var(--shape-dur) var(--shape-ease);
+  transform: translateX(var(--m-title-dx));
+  transition:
+    transform var(--shape-dur) var(--shape-ease),
+    opacity 120ms linear;
 }
 
 .music-hover .music-title {
   transform: translateY(-8px);
+}
+
+.music-title-plain {
+  width: var(--m-title-w-plain);
+}
+
+.music-title-hover {
+  width: var(--m-title-w);
+  opacity: 0;
+}
+
+.music-hover .music-title-plain {
+  opacity: 0;
+}
+
+.music-hover .music-title-hover {
+  opacity: 1;
 }
 
 /* Entering grows toward the final state on the grow spring; leaving only fades, fast, and
@@ -714,6 +733,7 @@ button {
 
 .music-artist {
   top: 50%;
+  width: var(--m-title-w);
   margin-top: 1px;
   line-height: 15px;
   font-size: 12px;
@@ -722,12 +742,17 @@ button {
 
 .music-controls {
   position: absolute;
-  right: -48px;
+  right: var(--m-controls-right);
   top: 50%;
   display: flex;
   gap: 2px;
-  margin-top: -16px;
+  margin-top: calc(var(--m-button) / -2);
   pointer-events: none;
+}
+
+.music-controls .glyph-button {
+  width: var(--m-button);
+  height: var(--m-button);
 }
 
 .music-hover .music-controls {
@@ -742,6 +767,36 @@ button {
   transition-delay: 40ms;
 }
 
+/* The progress line spans the hover pill's inner width; the plain form squeezes it on the
+   width axis only (so it stays 2px thick) and lifts it to the plain pill's bottom. */
+.bar.music-progress {
+  transform: translateY(calc(var(--m-progress-lift) * -1)) scaleX(var(--m-progress-scale));
+  transition: transform var(--shape-dur) var(--shape-ease);
+}
+
+.music-hover .bar.music-progress {
+  transform: none;
+}
+
+/* The dual peek's ¾ keeps its own plain layout, not the hover frame. */
+.music-dual .music-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px 0 16px;
+}
+
+.dual-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .art {
   position: relative;
   display: grid;
@@ -750,6 +805,12 @@ button {
   overflow: hidden;
   background: var(--fill-subtle);
   color: var(--text-3);
+}
+
+.art-small {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-art);
 }
 
 .art-round {
@@ -772,7 +833,7 @@ button {
 
 .audio-bars {
   position: absolute;
-  right: 18px;
+  right: var(--m-bars-right);
   top: 50%;
   display: flex;
   align-items: center;
@@ -884,9 +945,15 @@ button {
   }
 
   .media-button,
-  .music-art,
-  .music-title {
+  .art.music-art,
+  .music-title,
+  .bar.music-progress {
     transition: none;
+  }
+
+  .music-title-plain,
+  .music-title-hover {
+    transition: opacity 120ms linear;
   }
 
   /* The artist and buttons only cross-fade. */

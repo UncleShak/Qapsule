@@ -5,6 +5,7 @@
 import { type CSSProperties, type MouseEvent, useState } from "react";
 import { expandClick, press, swapPeek } from "../bridge";
 import type { MusicView } from "../types";
+import { MUSIC_FRAME as F } from "./geometry";
 import { Glyph } from "./Glyph";
 
 /** Cover art over a placeholder (a subtle fill with the music glyph). A missing or broken
@@ -22,7 +23,7 @@ function Art({ art, className }: { art: string | null; className: string }) {
 
 /** The thin accent line along the bottom: where the song is, moving at the song's pace.
  *  A keyframe animation does the moving, so there is no timer; a new state remounts it. */
-function Progress({ music }: { music: MusicView }) {
+function Progress({ music, className = "" }: { music: MusicView; className?: string }) {
   const { position_ms: pos, length_ms: len, rate, playing } = music;
   if (pos === null || len === null || len <= 0) return null;
   const done = Math.min(Math.max(pos / len, 0), 1);
@@ -30,7 +31,7 @@ function Progress({ music }: { music: MusicView }) {
   const style = { "--from": done } as CSSProperties;
   if (moving) (style as Record<string, string>)["--remain"] = `${Math.round((len - pos) / rate)}ms`;
   return (
-    <span className="bar" aria-hidden="true">
+    <span className={`bar ${className}`} aria-hidden="true">
       <span
         key={`${pos}-${len}-${rate}-${playing}`}
         className={`bar-fill ${moving ? "bar-moving" : ""}`}
@@ -55,6 +56,24 @@ function Bars({ playing }: { playing: boolean }) {
  *  the pointer is over the pill. Both forms are the same elements, so the change between
  *  them is only CSS transitions on a class: the art scales, the title shifts up, the artist
  *  and buttons fade in and the bars fade out. */
+const FRAME = {
+  "--m-w": `${F.width}px`,
+  "--m-h": `${F.height}px`,
+  "--m-pad": `${F.pad}px`,
+  "--m-art": `${F.art}px`,
+  "--m-art-scale": F.artScale,
+  "--m-art-dx": `${F.artDx}px`,
+  "--m-title-left": `${F.titleLeft}px`,
+  "--m-title-dx": `${F.titleDx}px`,
+  "--m-title-w": `${F.titleWidth}px`,
+  "--m-title-w-plain": `${F.titleWidthPlain}px`,
+  "--m-button": `${F.button}px`,
+  "--m-controls-right": `${F.controlsRight}px`,
+  "--m-bars-right": `${F.barsRight}px`,
+  "--m-progress-scale": F.progressScale,
+  "--m-progress-lift": `${F.progressLift}px`,
+} as CSSProperties;
+
 export function MusicPeek({ music, hover }: { music: MusicView; hover: boolean }) {
   const act = (action: string) => (e: MouseEvent) => {
     e.stopPropagation();
@@ -62,11 +81,15 @@ export function MusicPeek({ music, hover }: { music: MusicView; hover: boolean }
   };
   const tab = hover ? 0 : -1;
   return (
-    <div className={`music ${hover ? "music-hover" : ""}`}>
+    <div className={`music music-frame ${hover ? "music-hover" : ""}`} style={FRAME}>
       {/* A click on the song opens the expanded view (the core ignores it in hover mode). */}
       <button type="button" className="music-body" onClick={() => expandClick()}>
         <Art art={music.art} className="music-art" />
-        <span className="music-title">{music.title}</span>
+        {/* Two copies of the title, each ellipsised for its own width, cross-fading. */}
+        <span className="music-title music-title-plain">{music.title}</span>
+        <span className="music-title music-title-hover" aria-hidden="true">
+          {music.title}
+        </span>
         <span className="music-artist" aria-hidden={!hover}>
           {music.artist || music.app}
         </span>
@@ -95,7 +118,7 @@ export function MusicPeek({ music, hover }: { music: MusicView; hover: boolean }
           </button>
         </span>
       </span>
-      <Progress music={music} />
+      <Progress music={music} className="music-progress" />
     </div>
   );
 }
@@ -103,10 +126,10 @@ export function MusicPeek({ music, hover }: { music: MusicView; hover: boolean }
 /** The song as the ¾ of a dual peek: art and title, with no room for bars. */
 export function MusicMain({ music }: { music: MusicView }) {
   return (
-    <div className="music">
+    <div className="music music-dual">
       <button type="button" className="music-body" onClick={() => expandClick()}>
-        <Art art={music.art} className="music-art" />
-        <span className="music-title">{music.title}</span>
+        <Art art={music.art} className="art-small" />
+        <span className="dual-title">{music.title}</span>
       </button>
       <Progress music={music} />
     </div>

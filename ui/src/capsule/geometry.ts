@@ -66,6 +66,45 @@ const SIZES: Record<Exclude<LayoutKind, "dual" | "expanded">, [number, number]> 
   undo: [300, 44],
 };
 
+/** The song's content is laid out once, in the 400 x 56 hover pill, centred on the shape's
+ *  centre. The plain 280 x 44 form is the same elements under these constant offsets, all
+ *  derived from SIZES, so the two forms can't drift apart. Values are CSS pixels. */
+export const MUSIC_FRAME = (() => {
+  const [plainW, plainH] = SIZES.music;
+  const [w, h] = SIZES.music_hover;
+  const PAD = 16; // DESIGN.md: outer padding
+  const ART = { plain: 28, hover: 36 };
+  const GAP = { plain: 10, hover: 12 };
+  const BUTTON = 36;
+  const BUTTON_GAP = 2;
+  const CONTROLS_PAD = 12;
+  const BARS = { width: 21, pad: 18, gap: 10 }; // four 3px bars with 3px gaps
+  const inset = (w - plainW) / 2; // how far the plain pill's edge sits inside the hover pill's
+  const lift = (h - plainH) / 2; // and how far its bottom sits above
+  const titleLeft = PAD + ART.hover + GAP.hover;
+  const titleLeftPlain = inset + PAD + ART.plain + GAP.plain;
+  const controlsW = 3 * BUTTON + 2 * BUTTON_GAP;
+  const controlsLeft = w - CONTROLS_PAD - controlsW;
+  const barsRight = inset + BARS.pad; // from the hover pill's right edge
+  return {
+    width: w,
+    height: h,
+    pad: PAD,
+    art: ART.hover,
+    artScale: ART.plain / ART.hover,
+    artDx: inset + PAD + ART.plain / 2 - (PAD + ART.hover / 2),
+    titleLeft,
+    titleDx: titleLeftPlain - titleLeft,
+    titleWidth: controlsLeft - GAP.plain - titleLeft,
+    titleWidthPlain: w - barsRight - BARS.width - BARS.gap - titleLeftPlain,
+    button: BUTTON,
+    controlsRight: CONTROLS_PAD,
+    barsRight,
+    progressScale: plainW / w,
+    progressLift: lift,
+  };
+})();
+
 /** The shapes for a state. `hovered` stretches the peek shapes a little wider and taller;
  *  the expanded capsule never stretches. */
 export function layout(kind: LayoutKind, hovered = false): Layout {
