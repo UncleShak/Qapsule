@@ -278,11 +278,18 @@ fn build_tray(
         settings.do_not_disturb,
         None::<&str>,
     )?;
+    // A dev build loads its UI from the Vite server, which isn't running at
+    // sign-in, so starting it then would show nothing.
+    let release = !cfg!(debug_assertions);
     let autostart = CheckMenuItem::with_id(
         app,
         "autostart",
-        "Start with Windows",
-        true,
+        if release {
+            "Start with Windows"
+        } else {
+            "Start with Windows (built app only)"
+        },
+        release,
         autostart::is_enabled(),
         None::<&str>,
     )?;
