@@ -869,36 +869,44 @@ button {
   border-radius: 2px;
   background: var(--text-1);
   transform: scaleY(var(--rest));
-  animation: bars 900ms ease-in-out infinite alternate;
+  /* Stepped, about 7 changes a second, so far fewer frames are composited. Each bar is its
+     own small layer, so a step never repaints the pill. */
+  animation: bars 900ms steps(var(--steps), end) infinite alternate;
+  will-change: transform;
 }
 
 /* Heights 6 / 14 / 9 / 16 at rest, as fractions of the 16px box. */
 .audio-bars i:nth-child(1) {
   --rest: 0.375;
   --peak: 1;
+  --steps: 6;
 }
 
 .audio-bars i:nth-child(2) {
   --rest: 0.875;
   --peak: 0.4;
+  --steps: 5;
   animation-duration: 760ms;
 }
 
 .audio-bars i:nth-child(3) {
   --rest: 0.5625;
   --peak: 0.95;
+  --steps: 7;
   animation-duration: 1040ms;
 }
 
 .audio-bars i:nth-child(4) {
   --rest: 1;
   --peak: 0.35;
+  --steps: 6;
   animation-duration: 840ms;
 }
 
 .audio-paused i {
   animation-play-state: paused;
   transform: scaleY(var(--rest));
+  will-change: auto;
 }
 
 @keyframes bars {
@@ -921,8 +929,10 @@ button {
 
 /* The progress line moves at the song's pace; a new state remounts it. */
 .bar-moving {
-  animation: progress var(--remain) linear both;
+  /* One step a second: a few pixels at a time, instead of a repaint every frame. */
+  animation: progress var(--remain) steps(var(--steps), end) both;
   transform: scaleX(var(--from));
+  will-change: transform;
 }
 
 @keyframes progress {

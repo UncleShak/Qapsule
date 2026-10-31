@@ -40,7 +40,7 @@ Carried from docs/plans/expanded-view.md, plus this plan's items. Ticked as each
 - [ ] Ctrl+Alt+Space opens and takes focus; Esc closes and focus returns. Hotkey, click another app, hotkey again: that app keeps focus.
 - [ ] A "starts in 10 minutes" pop for a test event.
 - [ ] Weather glyphs and the snowflake's size; the hourly row has no per-hour glyph.
-- [ ] `scripts/measure-idle.ps1` within budget, with music playing and paused.
+- [x] `scripts/measure-idle.ps1` within budget (checked 31 Oct, release build, 120–300 s): idle 0.11% CPU / 14 MB avg; capsule shown with music playing 0.43% (0.88% before stepping the bars and progress line); paused 0.01%; memory up to 133 MB of 150.
 - [x] 150% and 200% scaling; a display narrower than 1064 logical px (phase B). (checked 31 Oct)
 - [x] Credential Manager: no leftover `Qapsule/test-*` entries (checked 31 Oct).
 - [x] Phase A: DND holds pops and survives a restart; editing config.toml applies without a restart (checked 31 Oct).

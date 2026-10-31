@@ -29,7 +29,13 @@ function Progress({ music, className = "" }: { music: MusicView; className?: str
   const done = Math.min(Math.max(pos / len, 0), 1);
   const moving = playing && rate > 0 && done < 1;
   const style = { "--from": done } as CSSProperties;
-  if (moving) (style as Record<string, string>)["--remain"] = `${Math.round((len - pos) / rate)}ms`;
+  if (moving) {
+    const remain = (len - pos) / rate;
+    const vars = style as Record<string, string | number>;
+    vars["--remain"] = `${Math.round(remain)}ms`;
+    // One step a second, capped so a very long stream doesn't get a huge step count.
+    vars["--steps"] = Math.min(600, Math.max(1, Math.ceil(remain / 1000)));
+  }
   return (
     <span className={`bar ${className}`} aria-hidden="true">
       <span
