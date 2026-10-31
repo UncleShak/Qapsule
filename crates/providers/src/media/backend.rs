@@ -33,7 +33,7 @@ use windows::core::{HRESULT, Interface, RuntimeType};
 use windows_future::{AsyncOperationCompletedHandler, IAsyncInfo, IAsyncOperation};
 
 use super::answer::{ANSWER_WITHIN, Background, Op, Waited, wait};
-use super::art::{ArtStore, MAX_SIDE, MAX_THUMBNAIL_BYTES};
+use super::art::{ArtStore, Cover, MAX_SIDE, MAX_THUMBNAIL_BYTES, tint};
 use super::tracker::{self, Control, Event, Playback, RawTimeline, Read, Reading, Source, Wakes};
 
 type Session = GlobalSystemMediaTransportControlsSession;
@@ -326,7 +326,7 @@ impl Source for WindowsSource {
         }
     }
 
-    fn read_art(&mut self) -> Option<Vec<u8>> {
+    fn read_art(&mut self) -> Option<Cover> {
         let session = &self.current.as_ref()?.session;
         match read_cover(session) {
             Ok(png) => png,
@@ -351,7 +351,7 @@ impl Source for WindowsSource {
 
 /// The session's thumbnail as a PNG of at most 256 x 256, or `None` if it has none or
 /// is too big. The bytes read are capped whatever the stream claims its size is.
-fn read_cover(session: &Session) -> windows::core::Result<Option<Vec<u8>>> {
+fn read_cover(session: &Session) -> windows::core::Result<Option<Cover>> {
     let started = Instant::now();
     let refuse = |why: &str| {
         eprintln!("qapsule: cover refused ({why})");
@@ -419,6 +419,8 @@ fn read_cover(session: &Session) -> windows::core::Result<Option<Vec<u8>>> {
         ColorManagementMode::DoNotColorManage,
     ))?
     .DetachPixelData()?;
+    // From the scaled pixels already in hand; the work is bounded by the sample grid.
+    let tint = tint(&pixels, scaled_width, scaled_height);
 
     let out = InMemoryRandomAccessStream::new()?;
     let encoder = ask(BitmapEncoder::CreateAsync(
@@ -444,7 +446,7 @@ fn read_cover(session: &Session) -> windows::core::Result<Option<Vec<u8>>> {
     ask(reader.LoadAsync(size as u32))?;
     let mut png = vec![0u8; size as usize];
     reader.ReadBytes(&mut png)?;
-    Ok(Some(png))
+    Ok(Some(Cover { png, tint }))
 }
 
 /// The size that fits `width` x `height` in `MAX_SIDE` square, never larger than the original.

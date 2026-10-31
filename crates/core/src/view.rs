@@ -149,6 +149,8 @@ pub struct MusicView {
     pub artist: String,
     /// A URL on the `qapsule-art` scheme.
     pub art: Option<String>,
+    /// The colour of the album wash as `#rrggbb`; none without art or with details off.
+    pub art_tint: Option<String>,
     pub playing: bool,
     /// Where the song is as of this snapshot; the UI animates from here.
     pub position_ms: Option<u64>,

@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use qapsule_core::{MediaState, Timeline};
 
-use super::art::ArtStore;
+use super::art::{ArtStore, Cover};
 
 /// Longest text the provider passes on; players can send anything.
 const MAX_TEXT_CHARS: usize = 200;
@@ -73,7 +73,7 @@ pub trait Source {
     /// The current session's state.
     fn read(&mut self) -> Read;
     /// The current session's cover as PNG, at most 256 x 256; `None` if it has none or can't be read.
-    fn read_art(&mut self) -> Option<Vec<u8>>;
+    fn read_art(&mut self) -> Option<Cover>;
     fn control(&mut self, control: Control);
 }
 
@@ -190,6 +190,7 @@ pub struct Tracker<S> {
     /// Title, artist and app of the song the cover belongs to.
     song: Option<(String, String, String)>,
     art_url: Option<String>,
+    art_tint: Option<[u8; 3]>,
 }
 
 fn clip(text: String) -> String {
@@ -234,6 +235,7 @@ impl<S: Source> Tracker<S> {
             art,
             song: None,
             art_url: None,
+            art_tint: None,
         }
     }
 
@@ -244,6 +246,7 @@ impl<S: Source> Tracker<S> {
     fn nothing(&mut self) -> Outcome {
         self.song = None;
         self.art_url = None;
+        self.art_tint = None;
         self.art.clear();
         Outcome::Set(None)
     }
@@ -275,11 +278,15 @@ impl<S: Source> Tracker<S> {
         let same_song = self.song.as_ref() == Some(&song);
         if batch.properties || !same_song {
             match self.source.read_art() {
-                Some(png) => self.art_url = Some(self.art.set(png)),
+                Some(cover) => {
+                    self.art_url = Some(self.art.set(cover.png));
+                    self.art_tint = cover.tint;
+                }
                 // A cover that can't be read right now stays for the same song.
                 None if !same_song => {
                     self.art.clear();
                     self.art_url = None;
+                    self.art_tint = None;
                 }
                 None => {}
             }
@@ -291,6 +298,7 @@ impl<S: Source> Tracker<S> {
             title,
             artist,
             art: self.art_url.clone(),
+            art_tint: self.art_url.as_ref().and(self.art_tint),
             playing,
             timeline: reading
                 .timeline
@@ -372,6 +380,7 @@ mod tests {
         /// The player doesn't answer.
         hung: bool,
         art: Option<Vec<u8>>,
+        tint: Option<[u8; 3]>,
         art_reads: usize,
         attaches: usize,
         controls: Vec<Control>,
@@ -394,10 +403,11 @@ mod tests {
                 None => Read::NoSession,
             }
         }
-        fn read_art(&mut self) -> Option<Vec<u8>> {
+        fn read_art(&mut self) -> Option<Cover> {
             let mut fake = self.0.borrow_mut();
             fake.art_reads += 1;
-            fake.art.clone()
+            let tint = fake.tint;
+            fake.art.clone().map(|png| Cover { png, tint })
         }
         fn control(&mut self, control: Control) {
             self.0.borrow_mut().controls.push(control);
@@ -565,6 +575,47 @@ mod tests {
         let later = state(tracker.refresh(props, Instant::now()));
         assert!(later.art.is_some());
         assert_ne!(later.art.as_deref(), Some(url.as_str()));
+    }
+
+    #[test]
+    fn the_tint_goes_with_the_cover() {
+        let (mut tracker, source, _) = setup();
+        {
+            let mut fake = source.0.borrow_mut();
+            fake.reading = Some(reading("One", Playback::Playing));
+            fake.art = Some(vec![1]);
+            fake.tint = Some([200, 40, 40]);
+        }
+        let first = state(tracker.refresh(BOTH, Instant::now()));
+        assert_eq!(first.art_tint, Some([200, 40, 40]));
+        // A property event that can't read the cover keeps both for the same song.
+        source.0.borrow_mut().art = None;
+        let props = Batch {
+            session: false,
+            properties: true,
+        };
+        assert_eq!(
+            state(tracker.refresh(props, Instant::now())).art_tint,
+            Some([200, 40, 40])
+        );
+        // A grey cover has a cover and no tint.
+        {
+            let mut fake = source.0.borrow_mut();
+            fake.art = Some(vec![2]);
+            fake.tint = None;
+        }
+        let grey = state(tracker.refresh(props, Instant::now()));
+        assert!(grey.art.is_some());
+        assert_eq!(grey.art_tint, None);
+        // A new song without a cover has no tint.
+        {
+            let mut fake = source.0.borrow_mut();
+            fake.reading = Some(reading("Two", Playback::Playing));
+            fake.art = None;
+            fake.tint = Some([1, 2, 3]);
+        }
+        let two = state(tracker.refresh(props, Instant::now()));
+        assert_eq!((two.art, two.art_tint), (None, None));
     }
 
     #[test]

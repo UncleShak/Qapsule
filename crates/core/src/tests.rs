@@ -2042,6 +2042,7 @@ fn song(title: &str, artist: &str, playing: bool, now: Instant) -> MediaState {
         title: title.into(),
         artist: artist.into(),
         art: None,
+        art_tint: None,
         playing,
         timeline: Some(Timeline {
             position: Duration::from_secs(10),
@@ -2733,4 +2734,71 @@ fn pressing_an_entry_removes_it_at_once() {
         core.take_update(clock.advance(300)).is_some(),
         "the view is told"
     );
+}
+
+fn tinted(art: Option<&str>, tint: Option<[u8; 3]>, now: Instant) -> MediaState {
+    MediaState {
+        art: art.map(Into::into),
+        art_tint: tint,
+        ..song("A", "B", true, now)
+    }
+}
+
+fn lone_tint(core: &Core, now: Instant) -> Option<String> {
+    let Peek::One { main } = core.snapshot(now).peek else {
+        panic!()
+    };
+    music(main).art_tint
+}
+
+#[test]
+fn the_tint_is_a_hex_colour_only_with_art_and_details() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    let url = "http://qapsule-art.localhost/x";
+    core.set_media(
+        Some(tinted(Some(url), Some([200, 40, 9]), clock.now())),
+        clock.now(),
+    );
+    assert_eq!(lone_tint(&core, clock.now()).as_deref(), Some("#c82809"));
+
+    // A tint without art (the cover failed) is not shown.
+    core.set_media(
+        Some(tinted(None, Some([200, 40, 9]), clock.now())),
+        clock.now(),
+    );
+    assert_eq!(lone_tint(&core, clock.now()), None);
+
+    // Art without a tint (a grey cover).
+    core.set_media(Some(tinted(Some(url), None, clock.now())), clock.now());
+    assert_eq!(lone_tint(&core, clock.now()), None);
+
+    // Details off hides it with the art.
+    let mut hidden = provider_core("[notifications]\nmusic = { details = false }\n", &clock);
+    hidden.set_media(
+        Some(tinted(Some(url), Some([200, 40, 9]), clock.now())),
+        clock.now(),
+    );
+    assert_eq!(lone_tint(&hidden, clock.now()), None);
+}
+
+#[test]
+fn a_tint_change_alone_is_a_visible_change() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    let url = "http://qapsule-art.localhost/x";
+    core.set_media(
+        Some(tinted(Some(url), Some([200, 40, 9]), clock.now())),
+        clock.now(),
+    );
+    core.take_update(clock.now());
+    core.set_media(
+        Some(tinted(Some(url), Some([10, 40, 200]), clock.now())),
+        clock.advance(300),
+    );
+    let state = core.take_update(clock.advance(300)).expect("an update");
+    let Peek::One { main } = state.peek else {
+        panic!()
+    };
+    assert_eq!(music(main).art_tint.as_deref(), Some("#0a28c8"));
 }

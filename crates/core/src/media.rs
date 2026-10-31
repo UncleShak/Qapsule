@@ -46,6 +46,8 @@ pub struct MediaState {
     pub artist: String,
     /// A URL on the `qapsule-art` scheme.
     pub art: Option<String>,
+    /// The wash colour picked from the cover, as red, green, blue.
+    pub art_tint: Option<[u8; 3]>,
     pub playing: bool,
     pub timeline: Option<Timeline>,
 }
@@ -96,6 +98,12 @@ pub(crate) fn music_view(
             media.app.clone()
         },
         art: media.art.clone().filter(|_| details),
+        art_tint: media
+            .art
+            .as_ref()
+            .zip(media.art_tint)
+            .filter(|_| details)
+            .map(|(_, [r, g, b])| format!("#{r:02x}{g:02x}{b:02x}")),
         playing: media.playing,
         position_ms: timeline.map(|t| position_at(t, media.playing, now).as_millis() as u64),
         length_ms: timeline.map(|t| t.length.as_millis() as u64),
@@ -113,6 +121,7 @@ fn same_view(old: &MediaState, new: &MediaState, now: Instant) -> bool {
         && old.title == new.title
         && old.artist == new.artist
         && old.art == new.art
+        && old.art_tint == new.art_tint
         && old.playing == new.playing
         && match (&old.timeline, &new.timeline) {
             (None, None) => true,
