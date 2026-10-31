@@ -65,16 +65,32 @@ button {
   transition: transform var(--shape-dur) var(--shape-ease);
 }
 
-/* The album wash (DESIGN.md section 3): clear copies of the shape carrying a static
-   gradient, in the fill group (not the content layer), so nothing repaints per frame. */
-.wash-layer {
+/* The album colour glow (DESIGN.md section 3): one element per form, in the fill group.
+   Static gradients; only opacity and the translate that follows the shape change. */
+.glow-layer {
   position: absolute;
   inset: 0;
+  pointer-events: none;
   animation: fade-in 400ms linear both;
 }
 
-.piece.wash-piece {
-  background-color: transparent;
+.glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  /* It fades out over the top 10 px, so it never meets the shoulders. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 10px);
+  transition:
+    transform var(--shape-dur) var(--shape-ease),
+    opacity 120ms linear;
+}
+
+.glow.on {
+  opacity: 1;
+  transition:
+    transform var(--shape-dur) var(--shape-ease),
+    opacity 200ms linear 80ms;
 }
 
 .fill {
@@ -1099,10 +1115,15 @@ button {
     animation: fade-in 120ms linear both;
   }
 
-  /* The wash and the glow change instantly. */
-  .wash-layer,
+  /* The colour glow and the cover glow change instantly. */
+  .glow-layer,
   .music-glow {
     animation: none;
+  }
+
+  .glow,
+  .glow.on {
+    transition: none;
   }
 
   /* The clock column doesn't move: it cross-fades in with the rest. */

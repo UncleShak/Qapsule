@@ -16,7 +16,17 @@ import { Arch, Shape } from "./Shape";
 import { Glyph, stateGlyph } from "./Glyph";
 import { MusicBubble, MusicMain, MusicPeek } from "./Music";
 import { Expanded } from "../widgets/Expanded";
-import { type Box, type Layout, type LayoutKind, type Rect, hitRects, layout, union, windowWidth } from "./geometry";
+import {
+  MUSIC_FRAME,
+  type Box,
+  type Layout,
+  type LayoutKind,
+  type Rect,
+  hitRects,
+  layout,
+  union,
+  windowWidth,
+} from "./geometry";
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -36,25 +46,53 @@ function kindOf(state: UiState): LayoutKind {
 /** The tint of the cover when the music holds the peek's main shape (the full pill, the ¾
  *  or the media view); null under a pop, the undo bar or the expanded view, with the music
  *  as the ¼, or when the core sent none. */
-function washTint(state: UiState): string | null {
+function glowTint(state: UiState): string | null {
   if (state.expanded || state.pop || state.undo || state.peek.kind === "idle") return null;
   const main = state.peek.main;
   return main.kind === "music" ? main.art_tint : null;
 }
 
-/** The wash layers to draw. A new tint stacks over the old one and fades in over 400 ms
- *  (a CSS animation); once it has finished, `done` drops the old layer. No timers. */
-function useWash(tint: string | null): [string[], () => void] {
-  const [wash, setWash] = useState<{ tint: string | null; layers: string[] }>({
+/** The glow layers to draw. A new tint stacks over the old one and fades in over 400 ms (a
+ *  CSS animation); once it has finished, `done` drops the old layer. No timers. */
+function useGlow(tint: string | null): [string[], () => void] {
+  const [glow, setGlow] = useState<{ tint: string | null; layers: string[] }>({
     tint,
     layers: tint ? [tint] : [],
   });
-  if (wash.tint !== tint) {
+  if (glow.tint !== tint) {
     // Derived during render: no tint, or reduced motion, is instant; else keep one old layer.
-    const layers = !tint ? [] : reducedMotion() ? [tint] : [...wash.layers.slice(-1), tint];
-    setWash({ tint, layers });
+    const layers = !tint ? [] : reducedMotion() ? [tint] : [...glow.layers.slice(-1), tint];
+    setGlow({ tint, layers });
   }
-  return [wash.layers, () => setWash((w) => (w.layers.length > 1 ? { ...w, layers: w.layers.slice(-1) } : w))];
+  return [glow.layers, () => setGlow((g) => (g.layers.length > 1 ? { ...g, layers: g.layers.slice(-1) } : g))];
+}
+
+/** The pill the plain glow fits: the lone pill, or the ¾ of a dual. */
+function plainGlowBox(state: UiState): Box {
+  return state.peek.kind === "dual" ? layout("dual").main : layout("music").main;
+}
+
+/** One glow element for one form: the pill's own box and radius (never per shape piece),
+ *  a static gradient centred on the cover. It follows the shape by translating; neither the
+ *  element nor its gradient is ever scaled. The two forms cross-fade by opacity. */
+function Glow({ form, rest, x, shown }: { form: "plain" | "media"; rest: Box; x: number | null; shown: boolean }) {
+  const media = form === "media";
+  const cover = media ? MUSIC_FRAME.art : MUSIC_FRAME.art * MUSIC_FRAME.artScale;
+  const cx = MUSIC_FRAME.pad + cover / 2;
+  // The media view also has the cover's own glow behind the larger cover: less colour here.
+  const strength = media ? 34 : 42;
+  return (
+    <div
+      className={`glow ${shown ? "on" : ""}`}
+      style={{
+        width: rest.w,
+        height: rest.h,
+        borderRadius: `0 0 ${rest.r}px ${rest.r}px`,
+        transform: `translateX(${x ?? rest.x}px)`,
+        background: `radial-gradient(ellipse 96px 60px at ${cx}px ${rest.h / 2}px, color-mix(in srgb, var(--art-tint) ${strength}%, transparent), transparent 100%)`,
+      }}
+    />
+  );
 }
 
 const isMusic = (k: LayoutKind) => k === "music" || k === "music_hover";
@@ -106,7 +144,7 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
     };
   }, []);
   const tucked = !state.shown || !entered;
-  const [washLayers, washDone] = useWash(washTint(state));
+  const [glowLayers, glowDone] = useGlow(glowTint(state));
   // The window is narrower on a narrow monitor and Rust may resize it at any time; the
   // layout follows its width. A resize event, not a timer.
   const [width, setWidth] = useState(windowWidth);
@@ -192,16 +230,17 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
           <Shape box={l.side} />
           <Arch x={l.archX} />
           <Shape box={l.main} />
-          {/* The album wash: clear copies of the main shape, stacked over the solid fill. */}
-          {washLayers.map((tint) => (
+          {/* The album colour glow (DESIGN.md section 3): one static element per form, in the
+              fill group (so the bars and the clock, in the content layer, never repaint it). */}
+          {glowLayers.map((tint) => (
             <div
               key={tint}
-              className="wash-layer"
+              className="glow-layer"
               style={{ "--art-tint": tint } as CSSProperties}
-              onAnimationEnd={(e: AnimationEvent) => e.target === e.currentTarget && washDone()}
+              onAnimationEnd={(e: AnimationEvent) => e.target === e.currentTarget && glowDone()}
             >
-              <Shape box={l.main} wash />
-              {l.dual && <Arch x={l.archX} wash pill={l.main} />}
+              <Glow form="plain" rest={plainGlowBox(state)} x={kind === "music_hover" ? null : l.main.x} shown={kind !== "music_hover"} />
+              <Glow form="media" rest={layout("music_hover").main} x={l.main.x} shown={kind === "music_hover"} />
             </div>
           ))}
         </div>
