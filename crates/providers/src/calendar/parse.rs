@@ -331,6 +331,31 @@ fn length(event: &RawEvent, start: &Moment, local: Tz) -> Duration {
     }
 }
 
+/// The rule with an `UNTIL` that has no zone (a date, as Google exports, or a
+/// floating time) given in UTC, read in `zone`; `rrule` refuses anything else
+/// once the start has a zone. A date means through the end of that day.
+fn utc_until(rule: &str, zone: Tz) -> String {
+    rule.split(';')
+        .map(|part| {
+            let Some((key, value)) = part.split_once('=') else {
+                return part.to_string();
+            };
+            if !key.trim().eq_ignore_ascii_case("UNTIL") || value.ends_with(['Z', 'z']) {
+                return part.to_string();
+            }
+            let naive = NaiveDate::parse_from_str(value, "%Y%m%d")
+                .ok()
+                .and_then(|d| d.and_hms_opt(23, 59, 59))
+                .or_else(|| NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%S").ok());
+            match naive.and_then(|n| local_time(zone, n)) {
+                Some(t) => format!("UNTIL={}", t.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ")),
+                None => part.to_string(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
 /// The starts of a recurring event around the window, at most `room` of them,
 /// and whether that limit (or the search limit) cut the series short. `None` if
 /// the rule is unusable.
@@ -347,7 +372,7 @@ fn expand(
         // All-day series run in UTC so daylight saving can't shift the date.
         Moment::Date(d) => Tz::UTC.from_utc_datetime(&d.and_hms_opt(0, 0, 0)?),
     };
-    let rule: RRule<Unvalidated> = rule.trim().parse().ok()?;
+    let rule: RRule<Unvalidated> = utc_until(rule.trim(), dt_start.timezone()).parse().ok()?;
     let rule = rule.validate(dt_start).ok()?;
     // Every second or minute would only fill the list; show the first one.
     if matches!(rule.get_freq(), Frequency::Secondly | Frequency::Minutely) {
@@ -703,5 +728,35 @@ mod tests {
         let all = parse_calendar(&text, JOBURG, utc("2025-03-10 08:00")).unwrap();
         assert_eq!(titles(&all), vec!["One"]);
         assert!(parse_calendar("<html>hi</html>", JOBURG, utc("2025-03-10 08:00")).is_err());
+    }
+
+    #[test]
+    fn an_until_without_a_zone_is_read_in_the_start_zone() {
+        assert_eq!(
+            utc_until("FREQ=WEEKLY;UNTIL=20261107", JOBURG),
+            "FREQ=WEEKLY;UNTIL=20261107T215959Z"
+        );
+        assert_eq!(
+            utc_until("FREQ=DAILY;until=20261107T090000;COUNT=3", JOBURG),
+            "FREQ=DAILY;UNTIL=20261107T070000Z;COUNT=3"
+        );
+        for kept in [
+            "FREQ=WEEKLY;UNTIL=20261107T215959Z",
+            "FREQ=WEEKLY;UNTIL=junk",
+        ] {
+            assert_eq!(utc_until(kept, JOBURG), kept);
+        }
+    }
+
+    #[test]
+    fn a_weekly_series_with_a_date_until_repeats_through_that_day() {
+        // Google exports a zoned start with a date-only UNTIL.
+        let text = calendar(
+            "BEGIN:VEVENT\r\nUID:a\r\nDTSTART;TZID=Africa/Johannesburg:20260720T083000\r\nDTEND;TZID=Africa/Johannesburg:20260720T092000\r\nRRULE:FREQ=WEEKLY;UNTIL=20261102\r\nSUMMARY:Lecture\r\nEND:VEVENT\r\n",
+        );
+        let all = parse_calendar(&text, JOBURG, utc("2026-10-31 06:00")).unwrap();
+        // The last Monday is the UNTIL date itself.
+        assert_eq!(all.len(), 1);
+        assert_eq!(start_of(&all[0]), utc("2026-11-02 06:30"));
     }
 }
