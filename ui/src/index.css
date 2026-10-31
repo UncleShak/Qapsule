@@ -652,6 +652,16 @@ button {
   text-align: left;
 }
 
+/* In the plain form only the visible pill responds, not the empty margins of the hover
+   frame. Not animated: it flips with the class. */
+.music-frame .music-body {
+  clip-path: inset(var(--m-inset-y) var(--m-inset-x));
+}
+
+.music-frame.music-hover .music-body {
+  clip-path: inset(0);
+}
+
 .art.music-art {
   position: absolute;
   left: var(--m-pad);

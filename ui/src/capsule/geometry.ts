@@ -102,6 +102,8 @@ export const MUSIC_FRAME = (() => {
     barsRight,
     progressScale: plainW / w,
     progressLift: lift,
+    inset,
+    lift,
   };
 })();
 
@@ -145,8 +147,7 @@ export function layout(kind: LayoutKind, hovered = false): Layout {
  *  and keeps working while this webview doesn't exist. */
 export function hitRects(kind: LayoutKind, tucked: boolean): Rect[] {
   if (tucked) return [];
-  // A song's region is its hover form's, so the pointer never changes it.
-  const l = layout(kind === "music" ? "music_hover" : kind, true);
+  const l = layout(kind, true);
   const around = (b: Box): Rect => {
     const x = b.x - (b.left ? b.shoulder : 0) - SHADOW_SIDE;
     const right = b.x + b.w + (b.right ? b.shoulder : 0) + SHADOW_SIDE;

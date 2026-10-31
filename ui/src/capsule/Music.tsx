@@ -71,6 +71,8 @@ const FRAME = {
   "--m-controls-right": `${F.controlsRight}px`,
   "--m-bars-right": `${F.barsRight}px`,
   "--m-progress-scale": F.progressScale,
+  "--m-inset-x": `${F.inset}px`,
+  "--m-inset-y": `${F.lift}px`,
   "--m-progress-lift": `${F.progressLift}px`,
 } as CSSProperties;
 

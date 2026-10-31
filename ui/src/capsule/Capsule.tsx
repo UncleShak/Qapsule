@@ -110,8 +110,9 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   });
 
   // The clickable region covers the old and new shapes until the change finishes.
-  // The hover form is inside the region already: hovering never changes it.
-  const hitKind: LayoutKind = isMusic(kind) ? "music" : kind;
+  // The pointer enters through the plain pill, so the region can grow once the hover form
+  // shows; it shrinks when the collapse settles, like any other shape change.
+  const hitKind: LayoutKind = kind;
   const shownRects = useRef<Rect[]>([]);
   const pending = useRef<Rect[] | null>(null);
   useEffect(() => {
