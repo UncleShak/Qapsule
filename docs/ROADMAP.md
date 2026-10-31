@@ -145,6 +145,7 @@ Two weeks after the holidays: make the dashboard yours, then make Qapsule instal
 - [ ] Your widgets: agent board and timer.
 - [ ] System screen: volume and per-app volume, brightness (laptop, plus DDC/CI monitors where supported), dark mode, and shortcuts to the Wi-Fi, Bluetooth, display, sound and power Settings pages.
 - [ ] Codex CLI integration, plus shell recipes for PowerShell, cmd and Git Bash.
+- [ ] Connect a Google account for the calendar (OAuth, read-only, every calendar on the account; token in Credential Manager), alongside the iCal link for Outlook and iCloud. Needs a decision record. Calendar read access is a sensitive scope: submit the app for Google verification early (privacy policy, home page; usually weeks), since unverified apps warn and allow 100 test users.
 
 **Milestone 9, "A stranger installs it" (Sun 17 Jan)**
 
