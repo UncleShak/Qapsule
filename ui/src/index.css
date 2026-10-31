@@ -636,6 +636,183 @@ button {
   color: var(--text-1);
 }
 
+/* The song in the peek. */
+.music {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  padding: 0 18px 0 8px;
+}
+
+.music-hover {
+  padding: 0 12px 0 10px;
+}
+
+.music-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 100%;
+  padding-left: 8px;
+  text-align: left;
+}
+
+.music-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.music-title,
+.music-artist {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.music-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.music-artist {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.art {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  background: var(--fill-subtle);
+  color: var(--text-3);
+}
+
+.art-small {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-art);
+}
+
+.art-hover {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-art);
+}
+
+.art-round {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+
+.art-glyph {
+  font-size: 13px;
+}
+
+.art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.audio-bars {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  height: 16px;
+}
+
+.audio-bars i {
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--text-1);
+  transform: scaleY(var(--rest));
+  animation: bars 900ms ease-in-out infinite alternate;
+}
+
+/* Heights 6 / 14 / 9 / 16 at rest, as fractions of the 16px box. */
+.audio-bars i:nth-child(1) {
+  --rest: 0.375;
+  --peak: 1;
+}
+
+.audio-bars i:nth-child(2) {
+  --rest: 0.875;
+  --peak: 0.4;
+  animation-duration: 760ms;
+}
+
+.audio-bars i:nth-child(3) {
+  --rest: 0.5625;
+  --peak: 0.95;
+  animation-duration: 1040ms;
+}
+
+.audio-bars i:nth-child(4) {
+  --rest: 1;
+  --peak: 0.35;
+  animation-duration: 840ms;
+}
+
+.audio-paused i {
+  animation-play-state: paused;
+  transform: scaleY(var(--rest));
+}
+
+@keyframes bars {
+  from {
+    transform: scaleY(var(--rest));
+  }
+  to {
+    transform: scaleY(var(--peak));
+  }
+}
+
+.music-controls {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  animation: fade-in var(--dur-fast) var(--ease-out) var(--content-delay) both;
+}
+
+.media-button {
+  font-size: 14px;
+  transition: transform var(--dur-ack) var(--ease-out);
+}
+
+.media-button:active {
+  transform: scale(0.9);
+}
+
+/* The progress line moves at the song's pace; a new state remounts it. */
+.bar-moving {
+  animation: progress var(--remain) linear both;
+  transform: scaleX(var(--from));
+}
+
+@keyframes progress {
+  from {
+    transform: scaleX(var(--from));
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .piece,
   .lift,
@@ -649,6 +826,15 @@ button {
 
   .bar.indeterminate::after {
     animation: none;
+  }
+
+  /* Still bars at their resting heights. The progress line keeps moving: it is information. */
+  .audio-bars i {
+    animation: none;
+  }
+
+  .media-button {
+    transition: none;
   }
 }
 

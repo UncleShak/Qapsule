@@ -31,7 +31,7 @@ export interface Box {
   right: boolean;
 }
 
-export type LayoutKind = "idle" | "one" | "dual" | "pop" | "undo" | "expanded";
+export type LayoutKind = "idle" | "one" | "music" | "music_hover" | "dual" | "pop" | "undo" | "expanded";
 
 export interface Layout {
   kind: LayoutKind;
@@ -60,6 +60,8 @@ export function expandedWidth(width: number): number {
 const SIZES: Record<Exclude<LayoutKind, "dual" | "expanded">, [number, number]> = {
   idle: [120, 36],
   one: [280, 44],
+  music: [280, 44],
+  music_hover: [400, 56],
   pop: [340, 64],
   undo: [300, 44],
 };
@@ -68,6 +70,12 @@ const SIZES: Record<Exclude<LayoutKind, "dual" | "expanded">, [number, number]> 
  *  the expanded capsule never stretches. */
 export function layout(kind: LayoutKind, hovered = false): Layout {
   const CENTRE = windowWidth() / 2;
+  // A lone song doesn't stretch: under the pointer it becomes the 400 × 56 hover form.
+  if (kind === "music" || kind === "music_hover") {
+    const [w, h] = SIZES[hovered ? "music_hover" : kind];
+    const main = centred(w, h);
+    return { kind, main, side: main, archX: CENTRE - 12, dual: false };
+  }
   if (kind === "expanded") {
     const main = centred(expandedWidth(windowWidth()), 176, 32, EXPANDED_SHOULDER);
     return { kind, main, side: main, archX: CENTRE - 12, dual: false };

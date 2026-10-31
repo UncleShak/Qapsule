@@ -6,6 +6,7 @@ import { dismissPop, expandClick, press, setHitRects, swapPeek, undo } from "../
 import type { ItemView, PeekItem, PopView, UiState } from "../types";
 import { Arch, Shape } from "./Shape";
 import { Glyph, stateGlyph } from "./Glyph";
+import { MusicBubble, MusicMain, MusicPeek } from "./Music";
 import { Expanded } from "../widgets/Expanded";
 import { type Box, type Layout, type LayoutKind, type Rect, hitRects, layout, union, windowWidth } from "./geometry";
 
@@ -15,10 +16,16 @@ function kindOf(state: UiState): LayoutKind {
   if (state.expanded) return "expanded";
   if (state.pop) return "pop";
   if (state.undo) return "undo";
-  if (state.peek.kind === "one") return "one";
+  if (state.peek.kind === "one") {
+    const main = state.peek.main;
+    if (main.kind === "music") return main.controls ? "music_hover" : "music";
+    return "one";
+  }
   if (state.peek.kind === "dual") return "dual";
   return "idle";
 }
+
+const isMusic = (k: LayoutKind) => k === "music" || k === "music_hover";
 
 interface Shown {
   kind: LayoutKind;
@@ -40,7 +47,8 @@ function change(from: LayoutKind | null, to: LayoutKind, replaced: boolean): [st
   if (to === "expanded") return ["--spring-expand", 280];
   if (from === "expanded") return ["--spring-collapse", 220];
   if (to === "pop") return from === "undo" ? ["--spring-replace", 220] : ["--spring-pop", 240];
-  const size = (k: LayoutKind) => ({ idle: 0, one: 1, dual: 1, undo: 2, pop: 3, expanded: 4 })[k];
+  const size = (k: LayoutKind) =>
+    ({ idle: 0, one: 1, music: 1, music_hover: 1, dual: 1, undo: 2, pop: 3, expanded: 4 })[k];
   if (from !== null && size(to) > size(from)) return ["--spring-grow", 220];
   return ["--spring-settle", 180];
 }
@@ -79,7 +87,12 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   // Remember the last shape, to pick the spring and to cover both shapes while changing.
   // The spring is picked only when the shape changes, so an unrelated update (the
   // clock, a progress value) can't swap the curve under a running animation.
-  const now: Shown = { kind, seq: state.pop?.seq ?? null, hovered: stretched };
+  // A song's plain and hover forms are one shape that grows, so they share a kind here.
+  const now: Shown = {
+    kind: isMusic(kind) ? "music" : kind,
+    seq: state.pop?.seq ?? null,
+    hovered: stretched || kind === "music_hover",
+  };
   const previous = useRef<Shown | null>(null);
   const chosen = useRef<[string, number]>(["--spring-settle", 180]);
   const p = previous.current;
@@ -194,38 +207,31 @@ function Content({ state, rest, now }: { state: UiState; rest: Layout; now: Layo
       </Slot>
     );
   }
-  const main = asItem(state.peek.main);
-  const side = state.peek.kind === "dual" ? asItem(state.peek.side) : null;
+  const main = state.peek.main;
+  const side = state.peek.kind === "dual" ? state.peek.side : null;
+  const dual = state.peek.kind === "dual";
+  const keyOf = (item: PeekItem) => `${item.source}/${item.id}`;
   return (
     <>
-      <Slot rest={rest.main} now={now.main} key={`${rest.kind}-main-${main.source}/${main.id}`}>
-        <Item item={main} />
+      {/* One key for a song's plain and hover forms, so the hover form doesn't replay the entrance. */}
+      <Slot rest={rest.main} now={now.main} key={`${dual ? "dual" : "one"}-main-${keyOf(main)}`}>
+        {main.kind === "music" ? (
+          dual ? (
+            <MusicMain music={main} />
+          ) : (
+            <MusicPeek music={main} />
+          )
+        ) : (
+          <Item item={main} />
+        )}
       </Slot>
       {side && (
-        <Slot rest={rest.side} now={now.side} key={`side-${side.source}/${side.id}`}>
-          <Bubble item={side} />
+        <Slot rest={rest.side} now={now.side} key={`side-${keyOf(side)}`}>
+          {side.kind === "music" ? <MusicBubble music={side} /> : <Bubble item={side} />}
         </Slot>
       )}
     </>
   );
-}
-
-/** Until the music view exists, a song draws as an ordinary item: its title and a music glyph. */
-function asItem(item: PeekItem): ItemView {
-  if (item.kind === "activity") return item;
-  return {
-    source: item.source,
-    id: item.id,
-    source_label: "Music",
-    title: item.title,
-    subtitle: item.artist,
-    state: "info",
-    progress: null,
-    indeterminate: false,
-    icon: "music",
-    elapsed_min: null,
-    primary_action: null,
-  };
 }
 
 function caption(item: ItemView): string | null {
