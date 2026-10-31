@@ -60,7 +60,14 @@ type Sink = Box<dyn Fn(WeatherView) + Send>;
 
 /// The weather provider. Dropping it stops the task.
 pub struct Weather {
-    tx: mpsc::UnboundedSender<bool>,
+    tx: mpsc::UnboundedSender<Msg>,
+}
+
+enum Msg {
+    /// The main screen opened (`true`) or closed (`false`).
+    Screen(bool),
+    /// The configured city changed.
+    City(Option<String>),
 }
 
 impl Weather {
@@ -73,7 +80,13 @@ impl Weather {
 
     /// The main screen opened (`true`) or closed (`false`).
     pub fn main_screen(&self, visible: bool) {
-        let _ = self.tx.send(visible);
+        let _ = self.tx.send(Msg::Screen(visible));
+    }
+
+    /// The configured city changed (a reloaded config). A different city drops the
+    /// cached place and data, so the next open fetches fresh.
+    pub fn set_city(&self, city: Option<String>) {
+        let _ = self.tx.send(Msg::City(city));
     }
 }
 
@@ -81,11 +94,20 @@ fn spawn<F: Fetcher>(fetcher: F, city: Option<String>, sink: Sink) -> (Weather, 
     let (tx, mut rx) = mpsc::unbounded_channel();
     let mut state = State::new(fetcher, city, sink);
     let task = tokio::spawn(async move {
-        while let Some(visible) = rx.recv().await {
-            if visible {
-                state.opened(Instant::now()).await;
-                // Opens that arrived during the fetch are not new requests.
-                while rx.try_recv().is_ok() {}
+        while let Some(message) = rx.recv().await {
+            match message {
+                Msg::City(city) => state.set_city(city),
+                Msg::Screen(false) => {}
+                Msg::Screen(true) => {
+                    state.opened(Instant::now()).await;
+                    // Opens that arrived during the fetch are not new requests;
+                    // a city change is.
+                    while let Ok(message) = rx.try_recv() {
+                        if let Msg::City(city) = message {
+                            state.set_city(city);
+                        }
+                    }
+                }
             }
         }
     });
@@ -110,6 +132,16 @@ impl<F: Fetcher> State<F> {
             sink,
             place: None,
             last: None,
+        }
+    }
+
+    /// A different city drops the cached place and data.
+    fn set_city(&mut self, city: Option<String>) {
+        let city = city.map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+        if city != self.city {
+            self.city = city;
+            self.place = None;
+            self.last = None;
         }
     }
 
@@ -346,6 +378,42 @@ mod tests {
         task.await.unwrap();
         assert_eq!(fake.forecasts.load(Ordering::SeqCst), 1);
         assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_new_city_is_fetched_fresh_and_the_same_city_is_not() {
+        let fake = Arc::new(Fake::default());
+        let (mut s, mut rx) = state(&fake, Some("Pretoria"));
+        s.opened(Instant::now()).await;
+        rx.try_recv().unwrap();
+
+        s.set_city(Some(" Pretoria ".into()));
+        s.opened(Instant::now()).await;
+        assert!(rx.try_recv().is_err(), "same city keeps the cache");
+
+        s.set_city(Some("Durban".into()));
+        s.opened(Instant::now()).await;
+        assert_eq!(temp(rx.try_recv().unwrap()), (2, false));
+        assert_eq!(fake.geocodes.load(Ordering::SeqCst), 2);
+
+        s.set_city(None);
+        s.opened(Instant::now()).await;
+        assert_eq!(rx.try_recv().unwrap(), WeatherView::NoCity);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_city_sent_to_the_task_applies_to_the_next_open() {
+        let fake = Arc::new(Fake::default());
+        let (sink, mut rx) = views();
+        let (weather, task) = spawn(fake.clone(), Some("Pretoria".into()), sink);
+        weather.main_screen(true);
+        assert_eq!(temp(rx.recv().await.unwrap()), (1, false));
+        weather.set_city(Some("Durban".into()));
+        weather.main_screen(true);
+        assert_eq!(temp(rx.recv().await.unwrap()), (2, false));
+        drop(weather);
+        task.await.unwrap();
+        assert_eq!(fake.geocodes.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test(start_paused = true)]

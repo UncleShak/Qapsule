@@ -3,6 +3,7 @@
 //! file. The Tauri shell plugs a window into [`Shell`].
 
 pub mod config;
+pub mod config_watch;
 pub mod engine;
 mod framing;
 pub mod pipe;

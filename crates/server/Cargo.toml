@@ -10,6 +10,7 @@ repository.workspace = true
 qapsule-core = { path = "../core" }
 qapsule-protocol = { path = "../protocol" }
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+notify = { version = "8", default-features = false }
 toml_edit = "0.25"
 
 [dependencies.windows]
@@ -26,4 +27,4 @@ features = [
 ]
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread"] }
+tokio = { version = "1", features = ["rt-multi-thread", "test-util"] }

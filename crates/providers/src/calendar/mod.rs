@@ -112,7 +112,13 @@ struct Out {
 
 /// The calendar provider. Dropping it stops the task.
 pub struct Calendar {
-    tx: mpsc::UnboundedSender<bool>,
+    tx: mpsc::UnboundedSender<Msg>,
+}
+
+enum Msg {
+    /// The main screen opened (`true`) or closed (`false`).
+    Screen(bool),
+    Config(CalendarConfig),
 }
 
 impl Calendar {
@@ -137,7 +143,12 @@ impl Calendar {
 
     /// The main screen opened (`true`) or closed (`false`).
     pub fn main_screen(&self, visible: bool) {
-        let _ = self.tx.send(visible);
+        let _ = self.tx.send(Msg::Screen(visible));
+    }
+
+    /// New settings (a reloaded config): they apply from the next pop decision on.
+    pub fn set_config(&self, config: CalendarConfig) {
+        let _ = self.tx.send(Msg::Config(config));
     }
 }
 
@@ -160,7 +171,8 @@ fn spawn<F: Fetcher, L: LinkSource>(
             let deadline = state.deadline();
             tokio::select! {
                 message = rx.recv() => match message {
-                    Some(visible) => state.screen(visible).await,
+                    Some(Msg::Screen(visible)) => state.screen(visible).await,
+                    Some(Msg::Config(config)) => state.set_config(config).await,
                     None => break,
                 },
                 () = sleep_until(deadline) => state.tick().await,
@@ -236,6 +248,15 @@ impl<F: Fetcher, L: LinkSource> Provider<F, L> {
             last_success: None,
             last_attempt: None,
             popped: HashMap::new(),
+        }
+    }
+
+    /// New settings. Turning pops on starts the background refresh.
+    async fn set_config(&mut self, config: CalendarConfig) {
+        let was = self.config.pops;
+        self.config = config;
+        if config.pops && !was {
+            self.tick().await;
         }
     }
 
@@ -697,6 +718,44 @@ mod tests {
         assert_eq!(h.fetches(), 3);
         // Closed: the screen is not touched.
         assert!(h.views.try_recv().is_err());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn new_settings_apply_to_the_next_pop_decision() {
+        let mut h = harness(
+            ics(&[("Standup", "20250310T083000Z", "20250310T090000Z")]),
+            Some(LINK),
+            false,
+        );
+        settle().await;
+        assert_eq!(h.fetches(), 0);
+
+        // Pops on with a 15-minute lead: it fetches now and pops at 08:15.
+        h.calendar.set_config(CalendarConfig {
+            minutes_before: 15,
+            pops: true,
+        });
+        settle().await;
+        assert_eq!(h.fetches(), 1);
+        advance(14 * 60 + 59).await;
+        assert!(h.pops.try_recv().is_err());
+        advance(1).await;
+        let pop = h.pops.try_recv().unwrap();
+        assert_eq!(
+            pop.subtitle.as_deref(),
+            Some("Starts in 15 min · 10:30 · Room 1")
+        );
+
+        // Pops off again: nothing more happens in the background.
+        h.calendar.set_config(CalendarConfig {
+            minutes_before: 15,
+            pops: false,
+        });
+        settle().await;
+        let fetches = h.fetches();
+        advance(60 * 60).await;
+        assert_eq!(h.fetches(), fetches);
+        assert!(h.pops.try_recv().is_err());
     }
 
     #[tokio::test(start_paused = true)]
