@@ -2609,7 +2609,7 @@ fn the_history_is_in_the_expanded_view_only() {
 }
 
 #[test]
-fn pressing_a_history_entry_runs_the_primary_action_and_keeps_the_entry() {
+fn pressing_a_history_entry_runs_the_primary_action_and_removes_the_entry() {
     let clock = Clock::new();
     let mut core = Core::new(Settings::default(), clock.now());
 
@@ -2623,7 +2623,7 @@ fn pressing_a_history_entry_runs_the_primary_action_and_keeps_the_entry() {
     pop_one(&mut core, "link", vec![open], clock.now());
     core.dismiss_pop(clock.now());
     assert_eq!(
-        core.press_history("s", "link"),
+        core.press_history("s", "link", clock.now()),
         Some(Effect::OpenUrl("https://example.com".into()))
     );
 
@@ -2631,7 +2631,7 @@ fn pressing_a_history_entry_runs_the_primary_action_and_keeps_the_entry() {
     pop_one(&mut core, "window", vec![focus], clock.now());
     core.dismiss_pop(clock.now());
     assert_eq!(
-        core.press_history("s", "window"),
+        core.press_history("s", "window", clock.now()),
         Some(Effect::FocusWindow(42))
     );
 
@@ -2641,7 +2641,7 @@ fn pressing_a_history_entry_runs_the_primary_action_and_keeps_the_entry() {
     core.provider_upsert(w, clock.now()).unwrap();
     core.dismiss_pop(clock.now());
     assert_eq!(
-        core.press_history("windows:Fake", "n1"),
+        core.press_history("windows:Fake", "n1", clock.now()),
         Some(Effect::Provider {
             source: "windows:Fake".into(),
             id: "n1".into(),
@@ -2654,7 +2654,7 @@ fn pressing_a_history_entry_runs_the_primary_action_and_keeps_the_entry() {
     pop_one(&mut core, "call", vec![cb], clock.now());
     core.dismiss_pop(clock.now());
     assert_eq!(
-        core.press_history("s", "call"),
+        core.press_history("s", "call", clock.now()),
         Some(Effect::Callback {
             conn: 1,
             message: ServerMessage::Action {
@@ -2665,13 +2665,72 @@ fn pressing_a_history_entry_runs_the_primary_action_and_keeps_the_entry() {
         })
     );
     // ...and is dropped once that connection has gone, but the entry stays.
+    let cb = action("go", ActionKind::Callback, true);
+    pop_one(&mut core, "gone", vec![cb], clock.now());
+    core.dismiss_pop(clock.now());
     core.connection_closed(1);
-    assert_eq!(core.press_history("s", "call"), None);
-    assert!(core.history.iter().any(|h| h.view.id == "call"));
+    assert_eq!(core.press_history("s", "gone", clock.now()), None);
+    assert!(core.history.iter().any(|h| h.view.id == "gone"));
 
     // No action, no effect; an unknown entry, none either.
     pop_one(&mut core, "plain", vec![], clock.now());
     core.dismiss_pop(clock.now());
-    assert_eq!(core.press_history("s", "plain"), None);
-    assert_eq!(core.press_history("s", "nope"), None);
+    assert_eq!(core.press_history("s", "plain", clock.now()), None);
+    assert_eq!(core.press_history("s", "nope", clock.now()), None);
+}
+
+#[test]
+fn the_history_clears_once_the_view_that_showed_it_closes() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    pop_one(&mut core, "a", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    pop_one(&mut core, "b", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+
+    // Just opening keeps the entries visible.
+    core.toggle_expanded(clock.advance(10));
+    let shown = core.snapshot(clock.now()).expanded.unwrap().history;
+    assert_eq!(shown.len(), 2);
+
+    // Closing clears them.
+    core.close_expanded(clock.advance(10));
+    assert!(history_ids(&core).is_empty());
+
+    // An entry filed after closing survives until the next close.
+    pop_one(&mut core, "c", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(history_ids(&core), ["c"]);
+    core.toggle_expanded(clock.advance(10));
+    assert_eq!(
+        core.snapshot(clock.now()).expanded.unwrap().history.len(),
+        1
+    );
+    core.close_expanded(clock.advance(10));
+    assert!(history_ids(&core).is_empty());
+}
+
+#[test]
+fn pressing_an_entry_removes_it_at_once() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    let open = action(
+        "open",
+        ActionKind::OpenUrl {
+            url: "https://example.com".into(),
+        },
+        true,
+    );
+    pop_one(&mut core, "a", vec![open], clock.now());
+    core.dismiss_pop(clock.now());
+    pop_one(&mut core, "b", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    core.toggle_expanded(clock.advance(10));
+    core.take_update(clock.now());
+    assert!(core.press_history("s", "a", clock.now()).is_some());
+    assert_eq!(history_ids(&core), ["b"]);
+    assert!(
+        core.take_update(clock.advance(300)).is_some(),
+        "the view is told"
+    );
 }

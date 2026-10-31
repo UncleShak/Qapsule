@@ -35,7 +35,7 @@ For the history:
 **Notification history:**
 
 - The core keeps the last three notifications that left the screen (dismissed, expired or handled), newest first. A pop that replaces one with the same key replaces its history entry. Song notices are not kept; pops that never showed (pop off) are not kept.
-- Each entry keeps what the pop showed (honouring `details`), its icon and state, the local time it arrived, and the pop's primary action. Clicking an entry runs that action through the same routes as the pop: open the app for Windows notifications, focus the window or open the link for agents. Entries without an action (calendar) do nothing. A callback to a client that has disconnected is dropped. No new action kinds (AGENTS.md rule 5).
+- Each entry keeps what the pop showed (honouring `details`), its icon and state, the local time it arrived, and the pop's primary action. Clicking an entry runs that action through the same routes as the pop: open the app for Windows notifications, focus the window or open the link for agents. A pressed entry is removed at once, and the whole list clears when the expanded view that showed it closes (entries filed afterwards stay until the next viewing). Entries without an action (calendar) do nothing. A callback to a client that has disconnected is dropped. No new action kinds (AGENTS.md rule 5).
 - Memory only, like all notification text (decision 6): never written to disk, cleared on restart, not returned by `list`.
 - The main screen's centre column is split: the clock and date in the top half, the three entries below (icon, title, time), or "No notifications yet".
 

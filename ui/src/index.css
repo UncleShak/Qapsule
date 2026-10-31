@@ -851,15 +851,10 @@ button {
   transition-delay: 40ms;
 }
 
-/* The progress line spans the hover pill's inner width; the plain form squeezes it on the
-   width axis only (so it stays 2px thick) and lifts it to the plain pill's bottom. */
+/* The progress line is part of the media view only: it mounts when the view opens and
+   fades in with the rest of its content (opacity only). */
 .bar.music-progress {
-  transform: translateY(calc(var(--m-progress-lift) * -1)) scaleX(var(--m-progress-scale));
-  transition: transform var(--shape-dur) var(--shape-ease);
-}
-
-.music-hover .bar.music-progress {
-  transform: none;
+  animation: fade-in var(--dur-normal) var(--spring-grow) var(--content-delay) both;
 }
 
 /* The dual peek's ¾ keeps its own plain layout, not the hover frame. */
@@ -1028,9 +1023,12 @@ button {
   }
 
   .media-button,
-  .music-cover,
-  .bar.music-progress {
+  .music-cover {
     transition: none;
+  }
+
+  .bar.music-progress {
+    animation: fade-in 120ms linear both;
   }
 
   /* The artist and buttons only cross-fade. */

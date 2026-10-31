@@ -102,6 +102,8 @@ struct HistoryAction {
 struct HistoryEntry {
     view: HistoryView,
     action: Option<HistoryAction>,
+    /// It was in the history while the expanded view was open: it goes when the view closes.
+    seen: bool,
 }
 
 /// One thing the peek can rank.
@@ -398,19 +400,21 @@ impl Core {
         };
         self.history
             .retain(|h| (&h.view.source, &h.view.id) != (&pop.key.0, &pop.key.1));
-        self.history.push_front(HistoryEntry { view, action });
+        let seen = self.expanded.is_open();
+        self.history.push_front(HistoryEntry { view, action, seen });
         self.history.truncate(MAX_HISTORY);
     }
 
     /// A history entry was pressed: runs its pop's primary action the way the pop would.
-    /// The entry stays. A callback to a connection that has gone is dropped.
-    pub fn press_history(&mut self, source: &str, id: &str) -> Option<Effect> {
-        let entry = self
+    /// The entry is removed at once. A callback to a connection that has gone is dropped,
+    /// and the entry stays.
+    pub fn press_history(&mut self, source: &str, id: &str, now: Instant) -> Option<Effect> {
+        let index = self
             .history
             .iter()
-            .find(|h| h.view.source == source && h.view.id == id)?;
-        let action = entry.action.as_ref()?;
-        match &action.kind {
+            .position(|h| h.view.source == source && h.view.id == id)?;
+        let action = self.history[index].action.as_ref()?;
+        let effect = match &action.kind {
             ActionKind::OpenUrl { url } => Some(Effect::OpenUrl(url.clone())),
             ActionKind::FocusWindow { pid } => Some(Effect::FocusWindow(*pid)),
             ActionKind::Callback if is_reserved_source(source) => Some(Effect::Provider {
@@ -427,7 +431,12 @@ impl Core {
                 },
             }),
             ActionKind::Dismiss => None,
+        };
+        if effect.is_some() {
+            self.history.remove(index);
+            self.coalescer.mark(now);
         }
+        effect
     }
 
     /// A client disconnected. Its activities stay, but can no longer call it back.

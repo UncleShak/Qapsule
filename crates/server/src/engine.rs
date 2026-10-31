@@ -285,7 +285,7 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
                 Some(effect) => shell.run(effect),
                 None => {}
             },
-            Command::PressHistory { source, id } => match core.press_history(&source, &id) {
+            Command::PressHistory { source, id } => match core.press_history(&source, &id, now) {
                 Some(Effect::Callback { conn, message }) => {
                     if let Some(out) = conns.get(&conn) {
                         let _ = out.send(message);

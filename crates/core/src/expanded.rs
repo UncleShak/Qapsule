@@ -132,6 +132,10 @@ impl Core {
     }
 
     fn open(&mut self, how: Open, now: Instant) {
+        // What is in the history now is being seen.
+        for entry in &mut self.history {
+            entry.seen = true;
+        }
         // The media view gives way to the expanded view.
         self.media_open = false;
         self.media_close_at = None;
@@ -148,6 +152,8 @@ impl Core {
             return;
         }
         self.expanded.open = Open::Closed;
+        // The history was seen: it starts afresh.
+        self.history.retain(|entry| !entry.seen);
         // Pops that arrived meanwhile have not been seen yet: give them their full time.
         for pop in &mut self.pops {
             if pop.until.is_some() {

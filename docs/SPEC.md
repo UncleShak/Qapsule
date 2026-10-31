@@ -91,7 +91,7 @@ The capsule hangs from the top edge of the screen, like Bloom: a small peek most
 - The peek expands to the main screen when the pointer slows over it (under about 0.25 px/ms, then 60 ms) or after 180 ms of hovering; moving away collapses it after 300 ms (decision 7). The hotkey (default Ctrl+Alt+Q; `hotkey = "off"` turns it off) opens it and keeps it open until Esc. A setting can require a click instead of hover.
 - Three screens: your widgets (left), main (centre) and system (right). Switch with the mouse wheel, arrow keys, the dots, or a touchpad swipe.
 - Each screen holds one to three widgets. Right-click → Edit screens: drag to swap, × to remove, + to add. A screen never goes below one widget.
-- The main screen's clock column shows the time and date above, and below them the last three notifications that left the screen (title and arrival time; click one to run its main action). They are kept in memory only, never written to disk (decision 9).
+- The main screen's clock column shows the time and date above, and below them the last three notifications that left the screen (title and arrival time; click one to run its main action and remove it). They clear once you have seen them, when the view closes, and are kept in memory only, never written to disk (decision 9).
 
 **Action buttons**
 

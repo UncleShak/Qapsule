@@ -70,10 +70,8 @@ const FRAME = {
   "--m-button": `${F.button}px`,
   "--m-controls-right": `${F.controlsRight}px`,
   "--m-bars-right": `${F.barsRight}px`,
-  "--m-progress-scale": F.progressScale,
   "--m-inset-x": `${F.inset}px`,
   "--m-inset-y": `${F.lift}px`,
-  "--m-progress-lift": `${F.progressLift}px`,
 } as CSSProperties;
 
 /** The song filling the pill. Plain: cover, clock and bars. `open` is the media view (the
@@ -132,7 +130,8 @@ export function MusicPeek({ music, clock, open }: { music: MusicView; clock: str
           </button>
         </span>
       </span>
-      <Progress music={music} className="music-progress" />
+      {/* Only in the media view: it mounts, and starts moving, when the view opens. */}
+      {open && <Progress music={music} className="music-progress" />}
     </div>
   );
 }
@@ -156,7 +155,6 @@ export function MusicMain({ music, clock }: { music: MusicView; clock: string })
         <Art art={music.art} className="art-small" />
       </button>
       <Bars playing={music.playing} />
-      <Progress music={music} />
     </div>
   );
 }

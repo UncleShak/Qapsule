@@ -97,8 +97,6 @@ export const MUSIC_FRAME = (() => {
     button: BUTTON,
     controlsRight: CONTROLS_PAD,
     barsRight,
-    progressScale: plainW / w,
-    progressLift: lift,
     inset,
     lift,
   };
