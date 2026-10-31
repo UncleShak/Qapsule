@@ -10,9 +10,9 @@
 ## 1. Principles
 
 1. **One hero per surface.** Each widget has one big thing (a number, a title, album art). Everything else is small and quiet.
-2. **Restraint over decoration.** No gradients, no cards inside the capsule, no outlines on rows, no icon tiles for decoration. Space separates things, not borders.
+2. **Restraint over decoration.** No gradients (the album colour wash is the one exception), no cards inside the capsule, no outlines on rows, no icon tiles for decoration. Space separates things, not borders.
 3. **Colour means something.** White text at four strengths does the work. The accent marks *now*, *progress*, *active* and *needs you*. Album art is the only other source of colour.
-4. **Glow is a whisper.** Allowed only on slider handles (soft) and behind album art (blurred art colour). Nothing else glows.
+4. **Glow is a whisper.** Allowed only on slider handles (soft), behind album art (blurred art colour) and as the album colour wash in the capsule while music shows. Nothing else glows.
 5. **Whole things are buttons.** A notification, an agent row or an event row is one large target. Avoid small pill buttons inside them.
 6. **It belongs to Windows.** If Windows 11 has a pattern (toast, subtle button, toggle switch, pips pager), use its structure and refine its look. Never invent a new pattern where Windows has one.
 
@@ -118,6 +118,7 @@ Rules: always `font-variant-numeric: tabular-nums`. No uppercase labels. No more
 
 - Edge: `box-shadow: var(--cap-shadow), inset 0 -0.5px 0 var(--cap-edge);` — bottom hairline only (side lines would show a seam at the shoulders).
 - **Material: solid CSS fill, no `backdrop-filter`.** Windows Mica/Acrylic fills the whole window rectangle and can't follow the pill shape. Do not enable `window-vibrancy` effects for the capsule.
+- **Album colour wash** (amended 2026-10-31): while music is in the peek (full pill, the ¾, or the media view), the music's shape carries a soft radial wash of the cover's dominant colour inside the fill: `radial-gradient(120% 140% at 12% 50%, color-mix(in srgb, var(--art-tint) 26%, transparent), transparent 70%)` over `--cap-bg`, static. The tint is picked in Rust (vivid enough to read, never near-white or near-black); on a song change the new wash cross-fades in (opacity, 400 ms). No wash without art, with details off, or under the expanded view. Album art stays the only source of colour.
 
 ### Sizes
 
@@ -201,7 +202,7 @@ Dismissing a pop removes it at once and morphs the capsule into "Notification di
 Four 3px white bars, radius 2, heights 6/14/9/16 at rest. CSS keyframe animation that runs **only while playing** (`animation-play-state: paused` otherwise) and is removed entirely when the peek isn't showing music. Never analyse real audio. If milestone 5 shows a cost, replace with a still icon.
 
 ### Album art
-Real cover image, radius 14 (large) / 8 (small). Large art gets a glow: a copy of the art (or its dominant colour) behind it, `filter: blur(24px); opacity: 0.45; inset: 8px`. Placeholder when no art: flat dominant colour or `--fill-subtle` with a music glyph.
+Real cover image, radius 14 (large) / 8 (small). Large art, and the 36px cover in the media view, gets a glow: a copy of the art (or its dominant colour) behind it, `filter: blur(24px); opacity: 0.45; inset: 8px` (for the 36px cover: `blur(12px)`, `inset: 4px`), kept inside the capsule. The 28px peek cover has no glow; the wash does that job. Placeholder when no art: flat dominant colour or `--fill-subtle` with a music glyph.
 
 ### Divider
 `height: 0.5px; background: var(--divider)`. Only inside a widget (e.g. calendar between "now" and "up next"). Never between widgets.
@@ -291,7 +292,7 @@ Pops return to the peek they came from after about 5 seconds (agent pops stay un
 - No `backdrop-filter` anywhere in the capsule.
 - No JS timers or `requestAnimationFrame` in the UI. The clock updates via a Rust event once a minute.
 - Only `transform` and `opacity` animate. The audio-bar animation is the only looping animation and runs only while music plays.
-- Blur is allowed only on the album-art glow (static, not animated).
+- Blur is allowed only on the album-art glow (static, not animated; it appears and goes with opacity).
 - Rust coalesces UI updates to at most 4 per second.
 
 ---
