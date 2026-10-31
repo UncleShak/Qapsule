@@ -137,7 +137,8 @@ pub struct MusicView {
     pub length_ms: Option<u64>,
     /// How fast the position moves: 1.0 is normal, 0.0 when paused or not moving.
     pub rate: f64,
-    /// Previous, play or pause and next show (the pointer is over a lone music item).
+    /// The hover form (artist, previous / pause / next) is allowed: music is the only item
+    /// and nothing is on top of it. The UI shows it while the pointer is over the pill.
     pub controls: bool,
 }
 

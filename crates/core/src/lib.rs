@@ -659,11 +659,9 @@ impl Core {
             }
         };
         let ranked = self.peek_ranked();
-        // Controls show on a lone music item under the pointer, with nothing on top of it.
-        let controls = self.pointer_over
-            && !self.expanded.is_open()
-            && self.pops.is_empty()
-            && self.undo.is_none();
+        // The hover form is allowed on a lone music item with nothing on top of it. The
+        // pointer is the UI's to watch: it shows the form at once, not after an update.
+        let controls = !self.expanded.is_open() && self.pops.is_empty() && self.undo.is_none();
         match ranked.as_slice() {
             [] => Peek::Idle,
             [(_, only)] => Peek::One {

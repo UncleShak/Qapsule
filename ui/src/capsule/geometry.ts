@@ -70,9 +70,9 @@ const SIZES: Record<Exclude<LayoutKind, "dual" | "expanded">, [number, number]> 
  *  the expanded capsule never stretches. */
 export function layout(kind: LayoutKind, hovered = false): Layout {
   const CENTRE = windowWidth() / 2;
-  // A lone song doesn't stretch: under the pointer it becomes the 400 × 56 hover form.
+  // A lone song doesn't stretch: its hover form is a kind of its own (400 x 56).
   if (kind === "music" || kind === "music_hover") {
-    const [w, h] = SIZES[hovered ? "music_hover" : kind];
+    const [w, h] = SIZES[kind];
     const main = centred(w, h);
     return { kind, main, side: main, archX: CENTRE - 12, dual: false };
   }
@@ -106,7 +106,8 @@ export function layout(kind: LayoutKind, hovered = false): Layout {
  *  and keeps working while this webview doesn't exist. */
 export function hitRects(kind: LayoutKind, tucked: boolean): Rect[] {
   if (tucked) return [];
-  const l = layout(kind, true);
+  // A song's region is its hover form's, so the pointer never changes it.
+  const l = layout(kind === "music" ? "music_hover" : kind, true);
   const around = (b: Box): Rect => {
     const x = b.x - (b.left ? b.shoulder : 0) - SHADOW_SIDE;
     const right = b.x + b.w + (b.right ? b.shoulder : 0) + SHADOW_SIDE;

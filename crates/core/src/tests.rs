@@ -2071,19 +2071,17 @@ fn lone_controls(core: &Core, now: Instant) -> bool {
 }
 
 #[test]
-fn controls_show_only_on_a_lone_music_item_under_the_pointer() {
+fn controls_are_allowed_only_on_a_lone_music_item_and_ignore_the_pointer() {
     let mut clock = Clock::new();
     let mut core = Core::new(Settings::default(), clock.now());
     core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert!(!lone_controls(&core, clock.now()));
+    assert!(lone_controls(&core, clock.now()));
 
-    core.take_update(clock.now());
+    // The pointer doesn't change the flag; the UI watches the pointer itself.
     core.set_pointer(true, clock.advance(300));
     assert!(lone_controls(&core, clock.now()));
-    assert!(
-        core.take_update(clock.now()).is_some(),
-        "the pointer changes the view"
-    );
+    core.set_pointer(false, clock.advance(10));
+    assert!(lone_controls(&core, clock.now()));
 
     // Not with the expanded view open.
     core.toggle_expanded(clock.advance(10));
@@ -2104,7 +2102,6 @@ fn controls_hide_under_a_pop_and_the_undo_bar() {
     let mut clock = Clock::new();
     let mut core = Core::new(Settings::default(), clock.now());
     core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    core.set_pointer(true, clock.advance(10));
     assert!(lone_controls(&core, clock.now()));
     core.set_media(Some(song("C", "D", true, clock.now())), clock.now());
     assert!(!lone_controls(&core, clock.now()), "a pop is showing");
@@ -2115,6 +2112,13 @@ fn controls_hide_under_a_pop_and_the_undo_bar() {
     );
     core.tick(clock.advance(4_100));
     assert!(lone_controls(&core, clock.now()));
+
+    // Nor under the expanded view.
+    core.toggle_expanded(clock.advance(10));
+    assert!(
+        !lone_controls(&core, clock.now()),
+        "the expanded view is open"
+    );
 }
 
 #[test]

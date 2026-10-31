@@ -55,7 +55,7 @@ function change(from: LayoutKind | null, to: LayoutKind, replaced: boolean): [st
 
 /** `hovered` is the pointer being over the capsule: a purely visual stretch, so it lives here. */
 export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }) {
-  const kind = kindOf(state);
+  let kind = kindOf(state);
   // A new webview first paints the capsule tucked (with nothing clickable), then slides
   // it in, so a recreated webview never flashes into place half-drawn.
   const [entered, setEntered] = useState(false);
@@ -80,9 +80,14 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   }, []);
   // The expanded capsule never stretches.
   const stretched = hovered && !tucked && kind !== "expanded";
+  // A song's hover form needs the core to allow it and the pointer to be over the pill: the
+  // shape and the content change together, on the pointer's own event.
+  const wide = kind === "music_hover" && stretched;
+  if (kind === "music_hover" && !wide) kind = "music";
   // The shape stretches on hover; the content keeps its size and place.
   const l = layout(kind, stretched);
-  const base = layout(kind);
+  // A song's content is laid out for its plain shape and the hover form grows around it.
+  const base = layout(kind === "music_hover" ? "music" : kind);
 
   // Remember the last shape, to pick the spring and to cover both shapes while changing.
   // The spring is picked only when the shape changes, so an unrelated update (the
@@ -91,7 +96,7 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   const now: Shown = {
     kind: isMusic(kind) ? "music" : kind,
     seq: state.pop?.seq ?? null,
-    hovered: stretched || kind === "music_hover",
+    hovered: isMusic(kind) ? wide : stretched,
   };
   const previous = useRef<Shown | null>(null);
   const chosen = useRef<[string, number]>(["--spring-settle", 180]);
@@ -105,10 +110,12 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   });
 
   // The clickable region covers the old and new shapes until the change finishes.
+  // The hover form is inside the region already: hovering never changes it.
+  const hitKind: LayoutKind = isMusic(kind) ? "music" : kind;
   const shownRects = useRef<Rect[]>([]);
   const pending = useRef<Rect[] | null>(null);
   useEffect(() => {
-    const next = hitRects(kind, tucked);
+    const next = hitRects(hitKind, tucked);
     const first = shownRects.current.length === 0;
     if (first || reducedMotion()) {
       setHitRects(next);
@@ -118,7 +125,7 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
       pending.current = next;
     }
     shownRects.current = next;
-  }, [kind, tucked, width]);
+  }, [hitKind, tucked, width]);
   const settle = () => {
     if (pending.current) {
       setHitRects(pending.current);
@@ -151,7 +158,7 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
           <Arch x={l.archX} />
           <Shape box={l.main} />
         </div>
-        <Content state={state} rest={base} now={l} />
+        <Content state={state} rest={base} now={l} wide={wide} />
       </div>
     </div>
   );
@@ -172,7 +179,7 @@ function Slot({ rest, now, className = "", children }: { rest: Box; now: Box; cl
   );
 }
 
-function Content({ state, rest, now }: { state: UiState; rest: Layout; now: Layout }) {
+function Content({ state, rest, now, wide }: { state: UiState; rest: Layout; now: Layout; wide: boolean }) {
   // A new key remounts the content, which replays its entrance.
   if (state.expanded) {
     return (
@@ -219,7 +226,7 @@ function Content({ state, rest, now }: { state: UiState; rest: Layout; now: Layo
           dual ? (
             <MusicMain music={main} />
           ) : (
-            <MusicPeek music={main} />
+            <MusicPeek music={main} hover={wide && main.controls} />
           )
         ) : (
           <Item item={main} />

@@ -636,55 +636,110 @@ button {
   color: var(--text-1);
 }
 
-/* The song in the peek. */
+/* The song in the peek. The slot is the plain 280 x 44 pill; the hover form is the same
+   elements moving and fading on the shape's own spring, so nothing snaps. Everything is
+   placed absolutely from the slot's left edge, centred on its middle line. */
 .music {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
   width: 100%;
   height: 100%;
-  padding: 0 18px 0 8px;
-}
-
-.music-hover {
-  padding: 0 12px 0 10px;
 }
 
 .music-body {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  height: 100%;
-  padding-left: 8px;
+  position: absolute;
+  inset: 0;
   text-align: left;
 }
 
-.music-text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
+/* Drawn at 36 px and scaled to 28 px (radius 8 after scaling) in the plain form. */
+.art.music-art {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 36px;
+  height: 36px;
+  margin-top: -18px;
+  border-radius: 10px;
+  transform: scale(0.7778);
+  transition: transform var(--shape-dur) var(--shape-ease);
+}
+
+.music-hover .music-art {
+  transform: none;
 }
 
 .music-title,
 .music-artist {
+  position: absolute;
+  left: 54px;
+  width: 170px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .music-title {
+  top: 50%;
+  margin-top: -8px;
+  line-height: 16px;
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
+  transition: transform var(--shape-dur) var(--shape-ease);
+}
+
+.music-hover .music-title {
+  transform: translateY(-8px);
+}
+
+/* Entering grows toward the final state on the grow spring; leaving only fades, fast, and
+   holds the transform until it has faded so nothing jumps. */
+.music-artist,
+.ctl {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.96);
+  transition:
+    opacity 120ms linear,
+    transform 0s linear 120ms;
+}
+
+.music-hover .music-artist,
+.music-hover .ctl {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--dur-normal) var(--spring-grow),
+    transform var(--dur-normal) var(--spring-grow);
 }
 
 .music-artist {
+  top: 50%;
+  margin-top: 1px;
+  line-height: 15px;
   font-size: 12px;
   color: var(--text-3);
+}
+
+.music-controls {
+  position: absolute;
+  right: -48px;
+  top: 50%;
+  display: flex;
+  gap: 2px;
+  margin-top: -16px;
+  pointer-events: none;
+}
+
+.music-hover .music-controls {
+  pointer-events: auto;
+}
+
+.music-hover .ctl:nth-child(2) {
+  transition-delay: 20ms;
+}
+
+.music-hover .ctl:nth-child(3) {
+  transition-delay: 40ms;
 }
 
 .art {
@@ -695,18 +750,6 @@ button {
   overflow: hidden;
   background: var(--fill-subtle);
   color: var(--text-3);
-}
-
-.art-small {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--r-art);
-}
-
-.art-hover {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--r-art);
 }
 
 .art-round {
@@ -728,11 +771,25 @@ button {
 }
 
 .audio-bars {
+  position: absolute;
+  right: 18px;
+  top: 50%;
   display: flex;
-  flex: none;
   align-items: center;
   gap: 3px;
   height: 16px;
+  margin-top: -8px;
+  transition: opacity 120ms linear;
+  pointer-events: none;
+}
+
+/* Fades out as the buttons come in, and stops moving while hidden. */
+.music-hover .audio-bars {
+  opacity: 0;
+}
+
+.music-hover .audio-bars i {
+  animation-play-state: paused;
 }
 
 .audio-bars i {
@@ -782,13 +839,6 @@ button {
   }
 }
 
-.music-controls {
-  display: flex;
-  flex: none;
-  gap: 2px;
-  animation: fade-in var(--dur-fast) var(--ease-out) var(--content-delay) both;
-}
-
 .media-button {
   font-size: 14px;
   transition: transform var(--dur-ack) var(--ease-out);
@@ -833,8 +883,19 @@ button {
     animation: none;
   }
 
-  .media-button {
+  .media-button,
+  .music-art,
+  .music-title {
     transition: none;
+  }
+
+  /* The artist and buttons only cross-fade. */
+  .music-artist,
+  .ctl,
+  .music-hover .music-artist,
+  .music-hover .ctl {
+    transform: none;
+    transition: opacity 120ms linear;
   }
 }
 

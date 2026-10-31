@@ -51,43 +51,50 @@ function Bars({ playing }: { playing: boolean }) {
   );
 }
 
-/** The song filling the pill. `controls` is the core saying the pointer is over it. */
-export function MusicPeek({ music }: { music: MusicView }) {
-  const hover = music.controls;
-  const press1 = (action: string) => (e: MouseEvent) => {
+/** The song filling the pill. `hover` is the hover form: the core allows it (`controls`) and
+ *  the pointer is over the pill. Both forms are the same elements, so the change between
+ *  them is only CSS transitions on a class: the art scales, the title shifts up, the artist
+ *  and buttons fade in and the bars fade out. */
+export function MusicPeek({ music, hover }: { music: MusicView; hover: boolean }) {
+  const act = (action: string) => (e: MouseEvent) => {
     e.stopPropagation();
     press(music.source, music.id, action);
   };
+  const tab = hover ? 0 : -1;
   return (
     <div className={`music ${hover ? "music-hover" : ""}`}>
       {/* A click on the song opens the expanded view (the core ignores it in hover mode). */}
       <button type="button" className="music-body" onClick={() => expandClick()}>
-        <Art art={music.art} className={hover ? "art-hover" : "art-small"} />
-        <span className="music-text">
-          <span className="music-title">{music.title}</span>
-          {hover && <span className="music-artist">{music.artist || music.app}</span>}
+        <Art art={music.art} className="music-art" />
+        <span className="music-title">{music.title}</span>
+        <span className="music-artist" aria-hidden={!hover}>
+          {music.artist || music.app}
         </span>
       </button>
-      {hover ? (
-        <span className="music-controls">
-          <button type="button" className="glyph-button media-button" aria-label="Previous" onClick={press1("media.previous")}>
+      <Bars playing={music.playing} />
+      <span className="music-controls" aria-hidden={!hover}>
+        <span className="ctl">
+          <button type="button" className="glyph-button media-button" aria-label="Previous" tabIndex={tab} onClick={act("media.previous")}>
             <Glyph name="previous" />
           </button>
+        </span>
+        <span className="ctl">
           <button
             type="button"
             className="glyph-button media-button"
             aria-label={music.playing ? "Pause" : "Play"}
-            onClick={press1("media.play_pause")}
+            tabIndex={tab}
+            onClick={act("media.play_pause")}
           >
             <Glyph name={music.playing ? "pause" : "play"} />
           </button>
-          <button type="button" className="glyph-button media-button" aria-label="Next" onClick={press1("media.next")}>
+        </span>
+        <span className="ctl">
+          <button type="button" className="glyph-button media-button" aria-label="Next" tabIndex={tab} onClick={act("media.next")}>
             <Glyph name="next" />
           </button>
         </span>
-      ) : (
-        <Bars playing={music.playing} />
-      )}
+      </span>
       <Progress music={music} />
     </div>
   );
@@ -98,10 +105,8 @@ export function MusicMain({ music }: { music: MusicView }) {
   return (
     <div className="music">
       <button type="button" className="music-body" onClick={() => expandClick()}>
-        <Art art={music.art} className="art-small" />
-        <span className="music-text">
-          <span className="music-title">{music.title}</span>
-        </span>
+        <Art art={music.art} className="music-art" />
+        <span className="music-title">{music.title}</span>
       </button>
       <Progress music={music} />
     </div>
