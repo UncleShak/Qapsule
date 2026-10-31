@@ -114,10 +114,8 @@ mod tests {
 
     #[test]
     fn a_value_round_trips_and_is_removed() {
-        let key_name = windows::core::HSTRING::from(format!(
-            r"Software\Qynetik\Qapsule-test-{}",
-            std::process::id()
-        ));
+        let key_name =
+            windows::core::HSTRING::from(format!(r"Software\Qapsule-test-{}", std::process::id()));
         let key = PCWSTR(key_name.as_ptr());
         let name = w!("Probe");
         let long = format!("\"{}\"", "x".repeat(3000));
@@ -133,7 +131,5 @@ mod tests {
         remove(key, name).unwrap();
         // SAFETY: a NUL-terminated key name.
         let _ = unsafe { RegDeleteKeyW(HKEY_CURRENT_USER, key) };
-        // The parent goes too, but only if that left it empty (the call refuses otherwise).
-        let _ = unsafe { RegDeleteKeyW(HKEY_CURRENT_USER, w!(r"Software\Qynetik")) };
     }
 }

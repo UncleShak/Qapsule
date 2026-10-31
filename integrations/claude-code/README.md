@@ -27,7 +27,7 @@ With Windows Terminal or VS Code, **Open terminal** brings that window to the fr
 
 Other notification types, such as `idle_prompt`, are ignored. Claude Code sends `permission_prompt` only after a prompt has waited about six seconds, so quick answers don't pop.
 
-Pop settings live in `%APPDATA%\Qynetik\Qapsule\config.toml`:
+Pop settings live in `%APPDATA%\Qapsule\config.toml`:
 
 ```toml
 [notifications]

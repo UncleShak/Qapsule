@@ -53,7 +53,7 @@ windows_apps = { pop = true, details = false }
 - Per-app keys are `"windows:<App-Name>"`, with spaces turned into dashes. Microsoft Teams becomes `"windows:Microsoft-Teams"`.
 - `details = false` shows "New notification" instead of the text.
 
-Config lives at `%APPDATA%\Qynetik\Qapsule\config.toml`. Edits take effect after a restart.
+Config lives at `%APPDATA%\Qapsule\config.toml`. Edits take effect within a second, without a restart.
 
 ## What to expect
 

@@ -1,4 +1,4 @@
-//! The config file at `%APPDATA%\Qynetik\Qapsule\config.toml`.
+//! The config file at `%APPDATA%\Qapsule\config.toml`.
 
 use std::fs;
 use std::io;
@@ -9,12 +9,7 @@ use toml_edit::{DocumentMut, Item, Table, value};
 
 pub fn config_path() -> Option<PathBuf> {
     let appdata = std::env::var_os("APPDATA")?;
-    Some(
-        PathBuf::from(appdata)
-            .join("Qynetik")
-            .join("Qapsule")
-            .join("config.toml"),
-    )
+    Some(PathBuf::from(appdata).join("Qapsule").join("config.toml"))
 }
 
 /// Reads settings. A missing file means defaults; mistakes come back as warnings.

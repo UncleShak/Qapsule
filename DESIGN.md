@@ -1,6 +1,6 @@
-# Qynetik Capsule — Design System
+# Qapsule — Design System
 
-> The visual and interaction language for Qynetik Capsule. Read this before building or changing any UI.
+> The visual and interaction language for Qapsule. Read this before building or changing any UI.
 > Design source of truth: the "Qynetik Capsule Test Design" canvas (Claude Design). When this file and the canvas disagree, ask before guessing.
 
 **Direction in one line:** Windows 11, redesigned. Keep what makes it recognisably Windows (Segoe UI Variable, the Windows accent colour, Fluent icons, toast structure, subtle buttons), and fix what makes it feel flat: deeper surfaces, stronger hierarchy, more space, fewer boxes.
@@ -314,7 +314,7 @@ Pops return to the peek they came from after about 5 seconds (agent pops stay un
 ## 12. Copy
 
 - Sentence case, short, no exclamation marks.
-- Say what's happening and what to do: "Claude needs you" / "Approve file edit · capsule".
+- Say what's happening and what to do: "Claude needs you" / "Approve file edit · qapsule".
 - Times: 24-hour (`14:40`, `Thu 07:30`). Separators: ` · `.
 - Placeholders in mockups use `[Song title]`, `[Artist]`; never invent real-looking data in shipped UI.
 

@@ -21,11 +21,11 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::Shell::{ABM_NEW, ABN_FULLSCREENAPP, APPBARDATA, SHAppBarMessage};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClassNameW, GetForegroundWindow,
-    GetMessageW, GetWindowRect, HWND_TOPMOST, IDC_ARROW, IsZoomed, LWA_ALPHA, LoadCursorW,
-    MA_NOACTIVATE, MSG, PostMessageW, RegisterClassW, SWP_HIDEWINDOW, SWP_NOACTIVATE,
-    SWP_SHOWWINDOW, SetLayeredWindowAttributes, SetWindowPos, TranslateMessage, WM_APP,
-    WM_DISPLAYCHANGE, WM_DPICHANGED, WM_HOTKEY, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WNDCLASSW,
-    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    GetMessageW, GetWindowRect, HWND_TOPMOST, IDC_ARROW, IsZoomed, KillTimer, LWA_ALPHA,
+    LoadCursorW, MA_NOACTIVATE, MSG, PostMessageW, RegisterClassW, SWP_HIDEWINDOW, SWP_NOACTIVATE,
+    SWP_SHOWWINDOW, SetLayeredWindowAttributes, SetTimer, SetWindowPos, TranslateMessage, WM_APP,
+    WM_DISPLAYCHANGE, WM_DPICHANGED, WM_HOTKEY, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_TIMER,
+    WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 use windows::core::w;
 
@@ -35,6 +35,11 @@ const WM_APPBAR: u32 = WM_APP + 1;
 /// Asks the strip to show or hide itself to match `STRIP_WANTED`.
 const WM_STRIP: u32 = WM_APP + 2;
 const HOTKEY_ID: i32 = 1;
+/// One-shot timer that checks the foreground window again after a fullscreen app opens.
+const FULLSCREEN_RECHECK_ID: usize = 1;
+/// Windows announces a fullscreen app before the window has finished growing to fill
+/// the monitor (Firefox-based browsers lag by about 300 ms), so look again after this.
+const FULLSCREEN_RECHECK_MS: u32 = 500;
 /// From WinUser.h; the `windows` crate only exposes it with the Controls feature.
 const WM_MOUSELEAVE: u32 = 0x02A3;
 /// The strip's size in logical pixels.
@@ -181,9 +186,27 @@ unsafe extern "system" fn window_proc(
             WM_HOTKEY if wparam.0 as i32 == HOTKEY_ID => context.engine.toggle_expanded(),
             WM_APPBAR if wparam.0 as u32 == ABN_FULLSCREENAPP => {
                 let opening = lparam.0 != 0;
+                unsafe {
+                    if opening {
+                        SetTimer(
+                            Some(hwnd),
+                            FULLSCREEN_RECHECK_ID,
+                            FULLSCREEN_RECHECK_MS,
+                            None,
+                        );
+                    } else {
+                        let _ = KillTimer(Some(hwnd), FULLSCREEN_RECHECK_ID);
+                    }
+                }
                 context
                     .engine
                     .fullscreen(opening && foreground_is_fullscreen());
+            }
+            WM_TIMER if wparam.0 == FULLSCREEN_RECHECK_ID => {
+                unsafe {
+                    let _ = KillTimer(Some(hwnd), FULLSCREEN_RECHECK_ID);
+                }
+                context.engine.fullscreen(foreground_is_fullscreen());
             }
             WM_DISPLAYCHANGE | WM_DPICHANGED => {
                 (context.on_display_change)();
@@ -259,6 +282,8 @@ unsafe extern "system" fn strip_proc(
 
 /// Windows also reports the desktop itself as "fullscreen" (for example after Win+D),
 /// and a maximized window when the taskbar auto-hides. Neither should hide the capsule.
+/// A maximized window overhangs the monitor by its resize border, while a fullscreen
+/// one fits it exactly, even when Windows still calls it maximized (Firefox and Zen do).
 fn foreground_is_fullscreen() -> bool {
     unsafe {
         let window = GetForegroundWindow();
@@ -268,7 +293,11 @@ fn foreground_is_fullscreen() -> bool {
         let mut class = [0u16; 32];
         let len = GetClassNameW(window, &mut class) as usize;
         let class = String::from_utf16_lossy(&class[..len]);
-        if class == "Progman" || class == "WorkerW" || IsZoomed(window).as_bool() {
+        // The desktop, and the Alt+Tab switcher that briefly fills the screen.
+        if matches!(
+            class.as_str(),
+            "Progman" | "WorkerW" | "XamlExplorerHostIslandWindow"
+        ) {
             return false;
         }
         let mut rect = RECT::default();
@@ -284,6 +313,14 @@ fn foreground_is_fullscreen() -> bool {
             return false;
         }
         let m = info.rcMonitor;
-        rect.left <= m.left && rect.top <= m.top && rect.right >= m.right && rect.bottom >= m.bottom
+        let covers = rect.left <= m.left
+            && rect.top <= m.top
+            && rect.right >= m.right
+            && rect.bottom >= m.bottom;
+        let overhangs = rect.left < m.left
+            || rect.top < m.top
+            || rect.right > m.right
+            || rect.bottom > m.bottom;
+        covers && !(IsZoomed(window).as_bool() && overhangs)
     }
 }
