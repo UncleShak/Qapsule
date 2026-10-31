@@ -152,6 +152,142 @@ impl Default for PopSetting {
     }
 }
 
+/// The key of a [`Hotkey`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HotkeyKey {
+    /// `A`-`Z` (upper case), `0`-`9` or one of the punctuation keys.
+    Char(char),
+    /// `F1`-`F24`.
+    F(u8),
+    Space,
+    Tab,
+    Enter,
+    Esc,
+}
+
+impl HotkeyKey {
+    /// Backtick, minus, equals, brackets, semicolon, quote, comma, period, slash, backslash.
+    const PUNCTUATION: &'static str = "`-=[];',./\\";
+
+    fn parse(text: &str) -> Option<Self> {
+        let lower = text.to_ascii_lowercase();
+        match lower.as_str() {
+            "space" => return Some(Self::Space),
+            "tab" => return Some(Self::Tab),
+            "enter" => return Some(Self::Enter),
+            "esc" => return Some(Self::Esc),
+            _ => {}
+        }
+        if let Some(n) = lower.strip_prefix('f')
+            && !n.is_empty()
+            && n.bytes().all(|b| b.is_ascii_digit())
+        {
+            return n
+                .parse::<u8>()
+                .ok()
+                .filter(|n| (1..=24).contains(n))
+                .map(Self::F);
+        }
+        let mut chars = text.chars();
+        let (Some(c), None) = (chars.next(), chars.next()) else {
+            return None;
+        };
+        let c = c.to_ascii_uppercase();
+        (c.is_ascii_alphanumeric() || Self::PUNCTUATION.contains(c)).then_some(Self::Char(c))
+    }
+}
+
+impl std::fmt::Display for HotkeyKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Char(c) => write!(f, "{c}"),
+            Self::F(n) => write!(f, "F{n}"),
+            Self::Space => f.write_str("Space"),
+            Self::Tab => f.write_str("Tab"),
+            Self::Enter => f.write_str("Enter"),
+            Self::Esc => f.write_str("Esc"),
+        }
+    }
+}
+
+/// A global shortcut: modifiers and one key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Hotkey {
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+    pub win: bool,
+    pub key: HotkeyKey,
+}
+
+impl Hotkey {
+    /// Ctrl+Alt+Q.
+    pub const DEFAULT: Hotkey = Hotkey {
+        ctrl: true,
+        alt: true,
+        shift: false,
+        win: false,
+        key: HotkeyKey::Char('Q'),
+    };
+
+    /// Reads `Ctrl+Alt+Q`-style text (case-insensitive). `Ok(None)` means off
+    /// (`"off"` or an empty string). At least one of Ctrl, Alt or Win is required,
+    /// so a shortcut cannot take over ordinary typing.
+    pub fn parse(text: &str) -> Result<Option<Hotkey>, String> {
+        let text = text.trim();
+        if text.is_empty() || text.eq_ignore_ascii_case("off") {
+            return Ok(None);
+        }
+        // The key is whatever follows the last `+`; a `+` key itself is not supported.
+        let mut parts: Vec<&str> = text.split('+').map(str::trim).collect();
+        let key = parts.pop().unwrap_or_default();
+        let key = HotkeyKey::parse(key).ok_or_else(|| {
+            String::from(
+                "the key must be A-Z, 0-9, F1-F24, Space, Tab, Enter, Esc or one of ` - = [ ] ; ' , . / \\",
+            )
+        })?;
+        let mut hotkey = Hotkey {
+            ctrl: false,
+            alt: false,
+            shift: false,
+            win: false,
+            key,
+        };
+        for part in parts {
+            let flag = match part.to_ascii_lowercase().as_str() {
+                "ctrl" | "control" => &mut hotkey.ctrl,
+                "alt" => &mut hotkey.alt,
+                "shift" => &mut hotkey.shift,
+                "win" => &mut hotkey.win,
+                _ => return Err("modifiers are Ctrl, Alt, Shift and Win".into()),
+            };
+            if std::mem::replace(flag, true) {
+                return Err("a modifier is repeated".into());
+            }
+        }
+        if !(hotkey.ctrl || hotkey.alt || hotkey.win) {
+            return Err("it needs Ctrl, Alt or Win".into());
+        }
+        Ok(Some(hotkey))
+    }
+}
+
+impl std::fmt::Display for Hotkey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (on, name) in [
+            (self.ctrl, "Ctrl"),
+            (self.alt, "Alt"),
+            (self.shift, "Shift"),
+            (self.win, "Win"),
+        ] {
+            if on {
+                write!(f, "{name}+")?;
+            }
+        }
+        write!(f, "{}", self.key)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
     pub visibility: VisibilityMode,
@@ -160,6 +296,8 @@ pub struct Settings {
     /// Keyed by source name (`claude-code`) or category (`agents`, `commands`).
     pub notifications: HashMap<String, PopSetting>,
     pub expand_on: ExpandOn,
+    /// The shortcut that opens the main screen; `None` when turned off.
+    pub hotkey: Option<Hotkey>,
     /// Left, centre and right screens.
     pub screens: Vec<Screen>,
     /// How long before an event its pop shows.
@@ -174,6 +312,7 @@ impl Default for Settings {
             do_not_disturb: false,
             notifications: HashMap::new(),
             expand_on: ExpandOn::Click,
+            hotkey: Some(Hotkey::DEFAULT),
             screens: default_screens(),
             calendar_minutes_before: 10,
         }
@@ -250,6 +389,18 @@ impl Settings {
                     Some(mode) => settings.expand_on = mode,
                     None => warnings.push(format!(
                         "general.expand_on must be \"hover\" or \"click\", not {value}"
+                    )),
+                }
+            }
+            if let Some(value) = general.get("hotkey") {
+                match value.as_str().map(Hotkey::parse) {
+                    Some(Ok(hotkey)) => settings.hotkey = hotkey,
+                    Some(Err(why)) => {
+                        warnings.push(format!("general.hotkey: {why}; using {}", Hotkey::DEFAULT))
+                    }
+                    None => warnings.push(format!(
+                        "general.hotkey: it must be text like \"Ctrl+Alt+Q\" or \"off\"; using {}",
+                        Hotkey::DEFAULT
                     )),
                 }
             }

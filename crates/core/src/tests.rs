@@ -781,6 +781,83 @@ fn settings_ignore_mistakes_and_keep_defaults() {
 }
 
 #[test]
+fn hotkeys_parse_display_and_default() {
+    use crate::{Hotkey, HotkeyKey};
+    assert_eq!(Settings::default().hotkey, Some(Hotkey::DEFAULT));
+    assert_eq!(Hotkey::DEFAULT.to_string(), "Ctrl+Alt+Q");
+
+    let parsed = Hotkey::parse(" control + SHIFT + f12 ").unwrap().unwrap();
+    assert_eq!(
+        parsed,
+        Hotkey {
+            ctrl: true,
+            alt: false,
+            shift: true,
+            win: false,
+            key: HotkeyKey::F(12)
+        }
+    );
+    for text in [
+        "Ctrl+Alt+Q",
+        "Win+Space",
+        "Ctrl+Alt+Shift+Win+Esc",
+        "Alt+Tab",
+        "Ctrl+Enter",
+        "Ctrl+F24",
+        "Ctrl+1",
+        "Alt+`",
+        "Ctrl+\\",
+        "Ctrl+[",
+        "Win+/",
+        "Ctrl+'",
+    ] {
+        let hotkey = Hotkey::parse(text).unwrap().unwrap();
+        assert_eq!(hotkey.to_string(), text);
+        assert_eq!(Hotkey::parse(&hotkey.to_string()).unwrap(), Some(hotkey));
+    }
+    assert_eq!(Hotkey::parse("off").unwrap(), None);
+    assert_eq!(Hotkey::parse("OFF").unwrap(), None);
+    assert_eq!(Hotkey::parse("  ").unwrap(), None);
+
+    for bad in [
+        "Q",
+        "Shift+Q",
+        "Ctrl",
+        "Ctrl+",
+        "Ctrl+Alt+Q+W",
+        "Ctrl+Ctrl+Q",
+        "Ctrl+F25",
+        "Ctrl+F0",
+        "Ctrl+Home",
+        "Hyper+Q",
+        "Ctrl+\u{e9}",
+        "Ctrl+Alt+Space+",
+    ] {
+        assert!(Hotkey::parse(bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn the_hotkey_setting_reads_off_and_falls_back_with_a_warning() {
+    let read = |value: &str| Settings::from_toml(&format!("[general]\nhotkey = {value}\n"));
+    let (settings, warnings) = read("\"ctrl+alt+k\"");
+    assert_eq!(settings.hotkey.unwrap().to_string(), "Ctrl+Alt+K");
+    assert!(warnings.is_empty());
+    assert_eq!(read("\"off\"").0.hotkey, None);
+    assert_eq!(read("\"\"").0.hotkey, None);
+    for bad in ["\"Q\"", "\"Ctrl+Nope\"", "5", "true"] {
+        let (settings, warnings) = read(bad);
+        assert_eq!(settings.hotkey, Some(crate::Hotkey::DEFAULT), "{bad}");
+        assert_eq!(warnings.len(), 1, "{bad}");
+        assert!(warnings[0].starts_with("general.hotkey: "), "{warnings:?}");
+    }
+    assert_eq!(
+        Settings::from_toml("").0.hotkey,
+        Some(crate::Hotkey::DEFAULT)
+    );
+}
+
+#[test]
 fn pop_settings_fall_back_from_source_to_category_to_default() {
     let (settings, _) = Settings::from_toml(
         r#"

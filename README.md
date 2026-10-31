@@ -21,7 +21,7 @@ Qapsule fixes that. When your agent needs you, the pill pops to say so, and one 
 - **Peek view:** a small pill that shows the time, or whatever is happening right now: the song that's playing, a download, an agent at work.
 - **Two things at once:** when more than one thing is going on, the most important takes most of the pill and the next shows as a small ring or icon. Click it to swap.
 - **Pop notifications:** the pill briefly grows to show something you've allowed, with up to two buttons, then shrinks back.
-- **Stays out of your way:** hides when you're watching a video or playing a game fullscreen. Bring it back by moving your mouse to the top of the screen or pressing **Ctrl+Alt+Space**.
+- **Stays out of your way:** hides when you're watching a video or playing a game fullscreen. Bring it back by moving your mouse to the top of the screen or pressing **Ctrl+Alt+Q**.
 
 ### Three screens
 

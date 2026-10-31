@@ -19,7 +19,7 @@ use qapsule_protocol::{
 
 pub use media::{MediaState, Timeline};
 pub use presence::{Presence, PresenceEffect};
-pub use settings::{ExpandOn, Screen, WidgetConfig, WidgetKind, WidgetSize};
+pub use settings::{ExpandOn, Hotkey, HotkeyKey, Screen, WidgetConfig, WidgetKind, WidgetSize};
 pub use settings::{PopSetting, Settings, VisibilityMode};
 pub use store::{Entry, Key, Store};
 pub use timing::{Coalescer, RateLimiter};

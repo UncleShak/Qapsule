@@ -88,7 +88,7 @@ The capsule hangs from the top edge of the screen, like Bloom: a small peek most
 
 **Expanded view**
 
-- The peek expands to the main screen when the pointer slows over it (under about 0.25 px/ms, then 60 ms) or after 180 ms of hovering; moving away collapses it after 300 ms (decision 7). The hotkey (default Ctrl+Alt+Space) opens it and keeps it open until Esc. A setting can require a click instead of hover.
+- The peek expands to the main screen when the pointer slows over it (under about 0.25 px/ms, then 60 ms) or after 180 ms of hovering; moving away collapses it after 300 ms (decision 7). The hotkey (default Ctrl+Alt+Q; `hotkey = "off"` turns it off) opens it and keeps it open until Esc. A setting can require a click instead of hover.
 - Three screens: your widgets (left), main (centre) and system (right). Switch with the mouse wheel, arrow keys, the dots, or a touchpad swipe.
 - Each screen holds one to three widgets. Right-click → Edit screens: drag to swap, × to remove, + to add. A screen never goes below one widget.
 
@@ -287,7 +287,7 @@ One TOML file at `%APPDATA%\Qapsule\config.toml`, editable by hand or through th
 
 ```toml
 [general]
-hotkey = "Ctrl+Alt+Space"
+hotkey = "Ctrl+Alt+Q"      # modifiers (at least one of Ctrl, Alt, Win) + key; "off" disables
 visibility = "auto"        # auto | always | on_demand
 expand_on = "click"        # click | hover
 start_with_windows = false

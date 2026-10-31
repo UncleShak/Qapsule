@@ -24,6 +24,7 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewWindow, Wry};
 
 use lifecycle::Lifecycle;
+use watcher::HotkeyStatus;
 use window::Rect;
 
 /// Sends the core's coalesced updates to the webview, and applies its presence
@@ -169,6 +170,7 @@ fn webview_gone(app: &AppHandle) {
 /// the settings lock held (see `config::Live`): sends are channel pushes that never
 /// block, and holding the lock keeps them in the same order as the changes.
 fn push_settings(state: &AppState, settings: &Settings) {
+    watcher::set_hotkey(settings.hotkey);
     state.engine.settings(settings.clone());
     if let Some(weather) = state.weather.get() {
         weather.set_city(settings.weather_city().map(str::to_owned));
@@ -238,9 +240,21 @@ fn calendar_config(settings: &Settings) -> CalendarConfig {
     }
 }
 
+/// The tray's hotkey line.
+fn hotkey_label(status: HotkeyStatus) -> String {
+    match status {
+        HotkeyStatus::Registered(hotkey) => format!("Hotkey: {hotkey}"),
+        HotkeyStatus::Taken(hotkey) => {
+            format!("Hotkey {hotkey} is taken: set another in config.toml")
+        }
+        HotkeyStatus::Off => "Hotkey off".to_string(),
+    }
+}
+
 struct TrayItems {
     modes: Vec<(VisibilityMode, CheckMenuItem<Wry>)>,
     status: MenuItem<Wry>,
+    hotkey: MenuItem<Wry>,
     dnd: CheckMenuItem<Wry>,
     autostart: CheckMenuItem<Wry>,
 }
@@ -278,6 +292,16 @@ fn build_tray(
         false,
         None::<&str>,
     )?;
+    let hotkey = MenuItem::with_id(
+        app,
+        "hotkey",
+        hotkey_label(match settings.hotkey {
+            Some(hotkey) => HotkeyStatus::Registered(hotkey),
+            None => HotkeyStatus::Off,
+        }),
+        false,
+        None::<&str>,
+    )?;
     let dnd = CheckMenuItem::with_id(
         app,
         "do-not-disturb",
@@ -305,6 +329,7 @@ fn build_tray(
         app,
         &[
             &status,
+            &hotkey,
             &PredefinedMenuItem::separator(app)?,
             &dnd,
             &visibility,
@@ -341,6 +366,7 @@ fn build_tray(
     Ok(TrayItems {
         modes: items,
         status,
+        hotkey,
         dnd,
         autostart,
     })
@@ -457,6 +483,7 @@ pub fn run() {
 
             // Follows Windows' media events; costs nothing between them.
             let _ = media.set(Media::start(engine.clone(), art));
+            let settings_hotkey = settings.hotkey;
             let tray = build_tray(app, &settings, notifications.clone())?;
             let status_item = tray.status;
             // Only an unmet permission is actionable; the rest is information.
@@ -479,11 +506,19 @@ pub fn run() {
             start_config_watch(app.handle());
 
             let handle = app.handle().clone();
-            watcher::spawn(engine, move || {
-                if let Some(main) = handle.get_webview_window("main") {
-                    window::place(&main);
-                }
-            });
+            let hotkey_item = tray.hotkey;
+            watcher::spawn(
+                engine,
+                settings_hotkey,
+                move |status| {
+                    let _ = hotkey_item.set_text(hotkey_label(status));
+                },
+                move || {
+                    if let Some(main) = handle.get_webview_window("main") {
+                        window::place(&main);
+                    }
+                },
+            );
             // The window is created (or not) by the lifecycle, now that commands can be answered.
             lifecycle.start();
             Ok(())
