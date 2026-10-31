@@ -2059,34 +2059,21 @@ fn music(item: PeekItem) -> MusicView {
     }
 }
 
-/// The music in the peek: the lone pill, or the ¼ beside the time or an activity.
+/// The music in the peek: the lone pill or the media view, or the side of a dual.
 fn peek_music(core: &Core, now: Instant) -> MusicView {
     match core.snapshot(now).peek {
         Peek::One { main } => music(main),
-        Peek::Dual { side, .. } => music(side),
+        Peek::Dual { main, side } => match (main, side) {
+            (PeekItem::Music(view), _) | (_, PeekItem::Music(view)) => view,
+            _ => panic!("no music in the dual peek"),
+        },
         Peek::Idle => panic!("no music in the peek"),
     }
-}
-
-/// Starts the 5 s song notice: a first song, then a different one.
-fn start_notice(core: &mut Core, clock: &Clock) {
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-}
-
-fn has_notice(core: &Core, now: Instant) -> bool {
-    matches!(
-        core.snapshot(now).peek,
-        Peek::One {
-            main: PeekItem::Music(_)
-        }
-    )
 }
 
 fn peek_kinds(core: &Core, now: Instant) -> Vec<String> {
     let name = |item: PeekItem| match item {
         PeekItem::Music(_) => "music".to_string(),
-        PeekItem::Time => "time".to_string(),
         PeekItem::Activity(a) => a.id,
     };
     match core.snapshot(now).peek {
@@ -2096,136 +2083,8 @@ fn peek_kinds(core: &Core, now: Instant) -> Vec<String> {
     }
 }
 
-#[test]
-fn music_is_always_the_quarter_beside_the_top_activity() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    let mut with_progress = activity("s", "progress", State::Running);
-    with_progress.progress = Some(Progress::Fraction(0.3));
-    upsert(
-        &mut core,
-        activity("s", "plain", State::Running),
-        clock.now(),
-    );
-    upsert(&mut core, with_progress, clock.now());
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["progress", "music"]);
-
-    upsert(
-        &mut core,
-        activity("s", "ask", State::NeedsInput),
-        clock.now(),
-    );
-    assert_eq!(peek_kinds(&core, clock.now()), ["ask", "music"]);
-
-    // Even a plain running activity or a finished one is the ¾.
-    let mut core = Core::new(Settings::default(), clock.now());
-    upsert(
-        &mut core,
-        activity("s", "done", State::Succeeded),
-        clock.now(),
-    );
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["done", "music"]);
-}
-
-#[test]
-fn music_alone_is_the_quarter_beside_the_time_and_goes_with_set_media_none() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["time", "music"]);
-    core.set_media(None, clock.now());
-    assert_eq!(core.snapshot(clock.now()).peek, Peek::Idle);
-}
-
-#[test]
-fn without_dual_status_music_keeps_the_old_ranking() {
-    let clock = Clock::new();
-    let mut core = provider_core("[peek]\ndual_status = false\n", &clock);
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["music"]);
-}
-
-#[test]
-fn the_swap_works_with_the_music_key_but_never_with_the_time() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    core.swap_peek(clock.now());
-    assert_eq!(
-        peek_kinds(&core, clock.now()),
-        ["time", "music"],
-        "no swap with the time"
-    );
-
-    upsert(
-        &mut core,
-        activity("s", "plain", State::Running),
-        clock.now(),
-    );
-    assert_eq!(peek_kinds(&core, clock.now()), ["plain", "music"]);
-    core.swap_peek(clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
-    core.swap_peek(clock.now());
-    assert_eq!(peek_kinds(&core, clock.now()), ["plain", "music"]);
-}
-
-fn lone_controls(core: &Core, now: Instant) -> bool {
+fn media_open(core: &Core, now: Instant) -> bool {
     peek_music(core, now).controls
-}
-
-#[test]
-fn controls_are_allowed_only_when_music_is_the_only_item_and_ignore_the_pointer() {
-    let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
-    assert!(lone_controls(&core, clock.now()), "time + cover");
-
-    // The pointer doesn't change the flag; the UI watches the pointer itself.
-    core.set_pointer(true, clock.advance(300));
-    assert!(lone_controls(&core, clock.now()));
-    core.set_pointer(false, clock.advance(10));
-    assert!(lone_controls(&core, clock.now()));
-
-    core.toggle_expanded(clock.advance(10));
-    core.close_expanded(clock.advance(10));
-    assert!(lone_controls(&core, clock.now()));
-
-    // Not beside an activity.
-    upsert(
-        &mut core,
-        activity("s", "plain", State::Running),
-        clock.now(),
-    );
-    assert!(!lone_controls(&core, clock.now()));
-}
-
-#[test]
-fn controls_hide_under_a_pop_the_undo_bar_and_the_expanded_view_and_show_in_the_notice() {
-    let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    start_notice(&mut core, &clock);
-    assert!(has_notice(&core, clock.now()));
-    assert!(lone_controls(&core, clock.now()), "the notice pill");
-    core.tick(clock.advance(5_100));
-
-    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
-        .unwrap();
-    assert!(core.snapshot(clock.now()).pop.is_some());
-    assert!(!lone_controls(&core, clock.now()), "a pop is showing");
-    core.dismiss_pop(clock.now());
-    assert!(
-        !lone_controls(&core, clock.now()),
-        "the undo bar is showing"
-    );
-    core.tick(clock.advance(4_100));
-
-    core.toggle_expanded(clock.advance(10));
-    assert!(
-        !lone_controls(&core, clock.now()),
-        "the expanded view is open"
-    );
 }
 
 #[test]
@@ -2277,170 +2136,197 @@ fn a_timeline_that_only_confirms_the_position_sends_no_update() {
 }
 
 #[test]
-fn a_new_song_shows_the_notice_for_five_seconds_then_the_time_and_cover() {
-    let mut clock = Clock::new();
+fn music_ranks_between_running_with_progress_and_running() {
+    let clock = Clock::new();
     let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    assert!(!has_notice(&core, clock.now()), "the first song seen");
-    assert_eq!(peek_kinds(&core, clock.now()), ["time", "music"]);
-
-    // Pause, resume and seeking are not changes.
-    core.set_media(Some(song("One", "Band", false, clock.now())), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    let mut seek = song("One", "Band", true, clock.now());
-    seek.timeline.as_mut().unwrap().position = Duration::from_secs(150);
-    core.set_media(Some(seek), clock.now());
-    assert!(!has_notice(&core, clock.now()));
-
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    assert!(has_notice(&core, clock.now()));
-    assert_eq!(peek_music(&core, clock.now()).title, "Two");
-    assert!(
-        core.snapshot(clock.now()).pop.is_none(),
-        "no pop card any more"
+    let mut with_progress = activity("s", "progress", State::Running);
+    with_progress.progress = Some(Progress::Fraction(0.3));
+    upsert(
+        &mut core,
+        activity("s", "plain", State::Running),
+        clock.now(),
     );
-    assert!(core.store().is_empty());
-    assert_eq!(
-        core.next_deadline()
-            .map(|d| d <= clock.now() + Duration::from_secs(5)),
-        Some(true)
-    );
+    upsert(&mut core, with_progress, clock.now());
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["progress", "music"]);
 
-    core.tick(clock.advance(4_900));
-    assert!(has_notice(&core, clock.now()));
-    core.tick(clock.advance(200));
-    assert!(!has_notice(&core, clock.now()));
-    assert_eq!(peek_kinds(&core, clock.now()), ["time", "music"]);
-
-    // The same title under a new artist is a change.
-    core.set_media(Some(song("Two", "Other", true, clock.now())), clock.now());
-    assert!(has_notice(&core, clock.now()));
-}
-
-#[test]
-fn the_next_song_that_starts_paused_is_announced_when_it_plays() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    core.set_media(Some(song("Two", "Band", false, clock.now())), clock.now());
-    assert!(!has_notice(&core, clock.now()), "paused, not announced yet");
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    assert!(has_notice(&core, clock.now()));
-}
-
-#[test]
-fn a_first_song_seen_paused_is_the_baseline() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", false, clock.now())), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    assert!(!has_notice(&core, clock.now()));
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    assert!(has_notice(&core, clock.now()));
-}
-
-#[test]
-fn the_song_notice_follows_do_not_disturb_and_the_music_setting() {
-    let clock = Clock::new();
-    let mut core = provider_core("[notifications]\ndo_not_disturb = true\n", &clock);
-    start_notice(&mut core, &clock);
-    assert!(!has_notice(&core, clock.now()), "Do Not Disturb");
-
-    let mut core = provider_core("[notifications]\nmusic = { pop = false }\n", &clock);
-    start_notice(&mut core, &clock);
-    assert!(!has_notice(&core, clock.now()), "music notices are off");
-
-    let mut core = provider_core("[notifications]\nmusic = { details = false }\n", &clock);
-    start_notice(&mut core, &clock);
-    assert_eq!(peek_music(&core, clock.now()).title, "Now playing");
-}
-
-#[test]
-fn the_song_notice_yields_to_important_activities_and_pops() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
     upsert(
         &mut core,
         activity("s", "ask", State::NeedsInput),
         clock.now(),
     );
-    core.take_update(clock.now());
-    // A pop is showing for the question; music is not on top anyway.
-    start_notice(&mut core, &clock);
-    assert_eq!(peek_kinds(&core, clock.now()), ["ask", "music"]);
+    assert_eq!(peek_kinds(&core, clock.now()), ["ask", "progress"]);
 
-    // A pop showing at the change means no notice.
+    let mut core = Core::new(Settings::default(), clock.now());
+    upsert(
+        &mut core,
+        activity("s", "plain", State::Running),
+        clock.now(),
+    );
+    upsert(&mut core, activity("s", "info", State::Info), clock.now());
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
+}
+
+#[test]
+fn music_alone_fills_the_peek_and_goes_with_set_media_none() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["music"]);
+    core.set_media(None, clock.now());
+    assert_eq!(core.snapshot(clock.now()).peek, Peek::Idle);
+}
+
+#[test]
+fn the_swap_works_with_the_music_key() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    upsert(
+        &mut core,
+        activity("s", "plain", State::Running),
+        clock.now(),
+    );
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
+    core.swap_peek(clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["plain", "music"]);
+    core.swap_peek(clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
+}
+
+#[test]
+fn a_song_change_makes_no_notice_and_no_pop() {
+    let clock = Clock::new();
     let mut core = Core::new(Settings::default(), clock.now());
     core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
+    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
+    assert_eq!(pop_id(&core, clock.now()), None);
+    assert_eq!(peek_kinds(&core, clock.now()), ["music"]);
+    assert!(!media_open(&core, clock.now()));
+    assert_eq!(peek_music(&core, clock.now()).title, "Two");
+}
+
+#[test]
+fn a_click_on_the_cover_toggles_the_media_view() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.media_click(clock.now());
+    assert_eq!(
+        core.snapshot(clock.now()).peek,
+        Peek::Idle,
+        "no music, no view"
+    );
+
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    assert!(!media_open(&core, clock.now()));
+    core.media_click(clock.advance(10));
+    assert!(media_open(&core, clock.now()));
+    core.media_click(clock.advance(10));
+    assert!(!media_open(&core, clock.now()), "a second click closes it");
+}
+
+#[test]
+fn the_media_view_replaces_a_dual_peek_while_open() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    upsert(
+        &mut core,
+        activity("s", "plain", State::Running),
+        clock.now(),
+    );
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
+    core.media_click(clock.advance(10));
+    assert_eq!(peek_kinds(&core, clock.now()), ["music"]);
+    assert!(media_open(&core, clock.now()));
+    core.media_click(clock.advance(10));
+    assert_eq!(peek_kinds(&core, clock.now()), ["music", "plain"]);
+}
+
+#[test]
+fn the_media_view_closes_after_the_pointer_leaves_and_a_return_cancels_it() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    core.set_pointer(true, clock.now());
+    core.media_click(clock.advance(10));
+
+    core.set_pointer(false, clock.advance(10));
+    core.tick(clock.advance(250));
+    assert!(media_open(&core, clock.now()), "inside the grace");
+    core.tick(clock.advance(100));
+    assert!(!media_open(&core, clock.now()), "the grace ran out");
+
+    core.media_click(clock.advance(10));
+    core.set_pointer(true, clock.advance(10));
+    core.set_pointer(false, clock.advance(10));
+    core.set_pointer(true, clock.advance(100));
+    core.tick(clock.advance(1_000));
+    assert!(media_open(&core, clock.now()), "coming back cancelled it");
+    assert!(core.next_deadline().is_some());
+}
+
+#[test]
+fn the_media_view_closes_for_a_pop_the_expanded_view_the_webview_and_the_end_of_the_music() {
+    let mut clock = Clock::new();
+    let open = |core: &mut Core, clock: &mut Clock| {
+        core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+        core.media_click(clock.advance(10));
+        assert!(media_open(core, clock.now()));
+    };
+
+    let mut core = Core::new(Settings::default(), clock.now());
+    open(&mut core, &mut clock);
     upsert(
         &mut core,
         activity("s", "done", State::Succeeded),
         clock.now(),
     );
     assert!(core.snapshot(clock.now()).pop.is_some());
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    assert!(!has_notice(&core, clock.now()));
+    assert!(!media_open(&core, clock.now()), "a pop arrived");
+    // And it won't open over a pop.
+    core.media_click(clock.advance(10));
+    assert!(!media_open(&core, clock.now()));
+
+    let mut core = Core::new(Settings::default(), clock.now());
+    open(&mut core, &mut clock);
+    core.toggle_expanded(clock.advance(10));
+    core.close_expanded(clock.advance(10));
+    assert!(!media_open(&core, clock.now()), "the expanded view opened");
+    core.toggle_expanded(clock.advance(10));
+    core.media_click(clock.advance(10));
+    core.close_expanded(clock.advance(10));
+    assert!(
+        !media_open(&core, clock.now()),
+        "won't open under the expanded view"
+    );
+
+    let mut core = Core::new(Settings::default(), clock.now());
+    open(&mut core, &mut clock);
+    core.webview_gone(clock.advance(10));
+    assert!(!media_open(&core, clock.now()), "the webview went");
+
+    let mut core = Core::new(Settings::default(), clock.now());
+    open(&mut core, &mut clock);
+    core.set_media(None, clock.now());
+    core.set_media(Some(song("C", "D", true, clock.now())), clock.now());
+    assert!(!media_open(&core, clock.now()), "the music went away");
 }
 
 #[test]
-fn a_song_notice_waits_while_the_expanded_view_is_open() {
+fn the_media_click_reaches_the_ui_at_once_after_a_quiet_spell() {
     let mut clock = Clock::new();
     let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    core.toggle_expanded(clock.advance(10));
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    core.tick(clock.advance(20_000));
-
-    core.close_expanded(clock.advance(10));
-    core.tick(clock.advance(10));
-    assert!(has_notice(&core, clock.now()), "held, then shown in full");
-    core.tick(clock.advance(4_000));
-    assert!(has_notice(&core, clock.now()));
-    core.tick(clock.advance(1_100));
-    assert!(!has_notice(&core, clock.now()));
-}
-
-#[test]
-fn a_held_song_notice_is_dropped_if_the_song_changed_meanwhile_or_stopped() {
-    let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    core.toggle_expanded(clock.advance(10));
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    // The next song replaces the held one; only that one is announced.
-    core.set_media(Some(song("Three", "Band", true, clock.now())), clock.now());
-    core.close_expanded(clock.advance(10));
-    core.tick(clock.advance(10));
-    assert_eq!(peek_music(&core, clock.now()).title, "Three");
-
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    core.toggle_expanded(clock.advance(10));
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    core.set_media(None, clock.now());
-    core.close_expanded(clock.advance(10));
-    core.tick(clock.advance(10));
-    assert_eq!(core.snapshot(clock.now()).peek, Peek::Idle);
-}
-
-#[test]
-fn a_song_notice_ends_with_the_music() {
-    let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    start_notice(&mut core, &clock);
-    assert!(has_notice(&core, clock.now()));
-    core.set_media(None, clock.now());
-    assert_eq!(core.snapshot(clock.now()).peek, Peek::Idle);
-}
-
-#[test]
-fn the_song_notice_brings_out_a_hidden_capsule() {
-    let clock = Clock::new();
-    let mut core = provider_core("[general]\nvisibility = \"on_demand\"\n", &clock);
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    assert!(!core.snapshot(clock.now()).shown);
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    assert!(core.snapshot(clock.now()).shown);
+    core.set_media(Some(song("A", "B", true, clock.now())), clock.now());
+    core.take_update(clock.now());
+    core.media_click(clock.advance(1_000));
+    // The coalescer's first update after a quiet spell goes out on the spot.
+    let update = core.take_update(clock.now()).expect("an update");
+    let Peek::One { main } = update.peek else {
+        panic!()
+    };
+    assert!(music(main).controls);
 }
 
 #[test]
@@ -2632,12 +2518,13 @@ fn an_undone_dismissal_is_not_history() {
 }
 
 #[test]
-fn song_notices_and_never_shown_pops_are_not_history() {
+fn song_changes_and_never_shown_pops_are_not_history() {
     let mut clock = Clock::new();
     let mut core = Core::new(Settings::default(), clock.now());
-    start_notice(&mut core, &clock);
+    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
+    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
     core.tick(clock.advance(5_100));
-    assert!(history_ids(&core).is_empty(), "a song notice");
+    assert!(history_ids(&core).is_empty(), "a song change");
 
     // Do Not Disturb stops pops before they exist.
     let mut core = provider_core("[notifications]\ndo_not_disturb = true\n", &clock);
@@ -2787,16 +2674,4 @@ fn pressing_a_history_entry_runs_the_primary_action_and_keeps_the_entry() {
     core.dismiss_pop(clock.now());
     assert_eq!(core.press_history("s", "plain"), None);
     assert_eq!(core.press_history("s", "nope"), None);
-}
-
-#[test]
-fn closing_the_view_starts_a_held_song_notice_at_once() {
-    let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
-    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
-    core.toggle_expanded(clock.advance(10));
-    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
-    core.close_expanded(clock.advance(10));
-    // No tick in between.
-    assert!(has_notice(&core, clock.now()));
 }

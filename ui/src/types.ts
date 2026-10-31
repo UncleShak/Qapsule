@@ -35,8 +35,7 @@ export interface MusicView {
   controls: boolean;
 }
 
-/** `time` is the idle clock as the ¾ beside a resting song's cover. */
-export type PeekItem = { kind: "time" } | ({ kind: "activity" } & ItemView) | ({ kind: "music" } & MusicView);
+export type PeekItem = ({ kind: "activity" } & ItemView) | ({ kind: "music" } & MusicView);
 
 export type Peek =
   | { kind: "idle" }

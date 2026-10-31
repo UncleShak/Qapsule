@@ -23,6 +23,8 @@ For the history:
 
 ## Choice
 
+> **"Music at rest" below is superseded by decision 10** (clock in the music peek). The notification history stands.
+
 **Music at rest** (amends decision 8, Peek):
 
 - When a song starts playing or changes, and music would be the peek's top item, the peek shows the full music pill for 5 s (a "song notice"). It replaces the song-change pop card: the notice follows the `music` pop setting (pop off: no notice) and Do Not Disturb, waits while the expanded view is open, and never shows over a pop or the undo bar. The first song seen after start gets no notice, as before.

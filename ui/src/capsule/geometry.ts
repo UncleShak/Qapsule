@@ -74,15 +74,14 @@ export const MUSIC_FRAME = (() => {
   const [w, h] = SIZES.music_hover;
   const PAD = 16; // DESIGN.md: outer padding
   const ART = { plain: 28, hover: 36 };
-  const GAP = { plain: 10, hover: 12 };
+  const GAP = { hover: 12 };
   const BUTTON = 36;
   const BUTTON_GAP = 2;
   const CONTROLS_PAD = 12;
-  const BARS = { width: 21, pad: 18, gap: 10 }; // four 3px bars with 3px gaps
+  const BARS = { pad: 18 }; // the four 3px bars sit this far from the plain pill's right edge
   const inset = (w - plainW) / 2; // how far the plain pill's edge sits inside the hover pill's
   const lift = (h - plainH) / 2; // and how far its bottom sits above
   const titleLeft = PAD + ART.hover + GAP.hover;
-  const titleLeftPlain = inset + PAD + ART.plain + GAP.plain;
   const controlsW = 3 * BUTTON + 2 * BUTTON_GAP;
   const controlsLeft = w - CONTROLS_PAD - controlsW;
   const barsRight = inset + BARS.pad; // from the hover pill's right edge
@@ -94,9 +93,7 @@ export const MUSIC_FRAME = (() => {
     artScale: ART.plain / ART.hover,
     artDx: inset + PAD + ART.plain / 2 - (PAD + ART.hover / 2),
     titleLeft,
-    titleDx: titleLeftPlain - titleLeft,
-    titleWidth: controlsLeft - GAP.plain - titleLeft,
-    titleWidthPlain: w - barsRight - BARS.width - BARS.gap - titleLeftPlain,
+    titleWidth: controlsLeft - 10 - titleLeft,
     button: BUTTON,
     controlsRight: CONTROLS_PAD,
     barsRight,

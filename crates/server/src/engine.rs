@@ -73,6 +73,7 @@ enum Command {
     Pointer(bool),
     PointerSlowed,
     ExpandClick,
+    MediaClick,
     ToggleExpanded,
     CloseExpanded,
     Weather(WeatherView),
@@ -166,6 +167,11 @@ impl Engine {
     /// The peek was clicked outside any button.
     pub fn expand_click(&self) {
         self.send(Command::ExpandClick);
+    }
+
+    /// The song's cover was clicked: open or close the media view.
+    pub fn media_click(&self) {
+        self.send(Command::MediaClick);
     }
 
     /// The hotkey: open the expanded view and keep it open, or close it.
@@ -301,6 +307,7 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
             Command::Pointer(over) => core.set_pointer(over, now),
             Command::PointerSlowed => core.pointer_slowed(now),
             Command::ExpandClick => core.expand_click(now),
+            Command::MediaClick => core.media_click(now),
             Command::ToggleExpanded => core.toggle_expanded(now),
             Command::CloseExpanded => core.close_expanded(now),
             Command::Weather(weather) => core.set_weather(weather, now),

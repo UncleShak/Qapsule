@@ -135,8 +135,6 @@ pub enum Peek {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PeekItem {
-    /// The time, as the idle peek draws it: the ¾ beside the cover when nothing else happens.
-    Time,
     Activity(ItemView),
     Music(MusicView),
 }
@@ -157,8 +155,7 @@ pub struct MusicView {
     pub length_ms: Option<u64>,
     /// How fast the position moves: 1.0 is normal, 0.0 when paused or not moving.
     pub rate: f64,
-    /// The hover form (artist, previous / pause / next) is allowed: music is the only item
-    /// and nothing is on top of it. The UI shows it while the pointer is over the pill.
+    /// The media view is open: the song's title, artist, buttons and progress line show.
     pub controls: bool,
 }
 

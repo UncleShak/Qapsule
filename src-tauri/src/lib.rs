@@ -131,6 +131,11 @@ fn pointer_slowed(state: State<'_, AppState>) {
 }
 
 #[tauri::command]
+fn media_click(state: State<'_, AppState>) {
+    state.engine.media_click();
+}
+
+#[tauri::command]
 fn expand_click(state: State<'_, AppState>) {
     state.engine.expand_click();
 }
@@ -436,6 +441,7 @@ pub fn run() {
             set_pointer,
             pointer_slowed,
             expand_click,
+            media_click,
             close_expanded,
             set_hit_rects
         ])

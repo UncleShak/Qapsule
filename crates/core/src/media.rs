@@ -1,5 +1,5 @@
 //! Now playing (decision 0008): the music Windows reports, ranked into the peek
-//! beside pushed activities, with a song notice when the song changes. It is its own
+//! beside pushed activities, with a media view opened by a click on the cover. It is its own
 //! core input and never enters the activity store.
 
 use std::time::{Duration, Instant};
@@ -49,9 +49,6 @@ pub struct MediaState {
     pub playing: bool,
     pub timeline: Option<Timeline>,
 }
-
-/// How long the full music pill shows when a song starts or changes (decision 0009).
-pub(crate) const NOTICE_DURATION: Duration = Duration::from_secs(5);
 
 /// How fast the position moves: the rate when it is a sane positive number, else not at all.
 fn speed(rate: f64) -> f64 {
@@ -138,35 +135,11 @@ impl Core {
         let Some(new) = media else {
             self.media = None;
             self.media_shown = None;
-            self.notice_until = None;
-            self.notice_pending = None;
+            self.media_open = false;
+            self.media_close_at = None;
             self.coalescer.mark(now);
             return;
         };
-
-        // The first song reported is the baseline and never pops. After that the song
-        // is remembered only while playing, so a song that starts paused (the next one
-        // of an album) pops when it plays, and pause, resume and seeking never do.
-        // A song without a title is still loading.
-        let mut changed = false;
-        if !new.title.is_empty() {
-            let song = (new.title.clone(), new.artist.clone());
-            match &self.last_song {
-                None => self.last_song = Some(song),
-                Some(before) if new.playing => {
-                    changed = *before != song;
-                    self.last_song = Some(song);
-                }
-                Some(_) => {}
-            }
-        }
-        if changed {
-            // Only the newest song is worth announcing.
-            self.notice_until = None;
-            self.notice_pending = Some((new.title.clone(), new.artist.clone()));
-            self.media = Some(new.clone());
-            self.start_pending_notice(now);
-        }
 
         // Compared with what the UI was last told, so slow drift can't pile up unseen.
         let quiet = self
@@ -180,29 +153,23 @@ impl Core {
         self.media = Some(new);
     }
 
-    /// Starts the song notice for the pending song. It waits while the expanded view is
-    /// open, and is dropped if the song has changed meanwhile, a pop or the undo bar is
-    /// showing, Do Not Disturb is on, the music pop setting is off, or something more
-    /// important is on top.
-    pub(crate) fn start_pending_notice(&mut self, now: Instant) {
-        if self.expanded.is_open() {
-            return;
+    /// The cover was clicked: opens the media view, or closes it. It opens only with music
+    /// playing, the expanded view closed and no pop or undo bar on screen.
+    pub fn media_click(&mut self, now: Instant) {
+        if self.media_open {
+            self.close_media_view(now);
+        } else if self.media.is_some() && !self.expanded.is_open() && !self.pop_or_undo_showing() {
+            self.media_open = true;
+            self.media_close_at = None;
+            self.coalescer.mark(now);
         }
-        let Some(song) = self.notice_pending.take() else {
-            return;
-        };
-        let current = self
-            .media
-            .as_ref()
-            .is_some_and(|m| (m.title.clone(), m.artist.clone()) == song);
-        if current
-            && !self.settings.do_not_disturb
-            && self.settings.pop_setting(SOURCE).pop
-            && self.pops.is_empty()
-            && self.undo.is_none()
-            && self.music_on_top()
-        {
-            self.notice_until = Some(now + NOTICE_DURATION);
+    }
+
+    /// Closes the media view, if open.
+    pub(crate) fn close_media_view(&mut self, now: Instant) {
+        self.media_close_at = None;
+        if self.media_open {
+            self.media_open = false;
             self.coalescer.mark(now);
         }
     }

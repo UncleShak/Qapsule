@@ -38,7 +38,7 @@ Twenty features across the peek view and three screens, delivered in three relea
 | **AI agent status** (your top priority) | Peek pop; agent board | v0.1 | Claude Code and Codex hooks call the CLI | Open terminal, dismiss |
 | Command progress (`qapsule wrap`) | Peek ¼ ring | v0.1 | CLI | Dismiss |
 | Custom pushes from any app | Peek | v0.1 | Named-pipe API | Open link, callback |
-| Now playing, with optional song-change pop | Peek; system screen | v0.1 | Windows media session | Play/pause, previous, next |
+| Now playing | Peek; system screen | v0.1 | Windows media session | Play/pause, previous, next |
 | Pop notifications from Qapsule's sources, each with on/off and show-details settings | Peek | v0.1 | Built in | Per source |
 | Weather (left slot) | Main screen | v0.1 | Open-Meteo, city in settings | Open forecast |
 | Time and date (middle slot) | Main screen | v0.1 | System clock | None |
@@ -76,7 +76,7 @@ The capsule hangs from the top edge of the screen, like Bloom: a small peek most
 **Peek view**
 
 - Nothing happening: the time.
-- One thing happening: it takes the full pill, such as the current song with a thin progress line.
+- One thing happening: it takes the full pill. Music is cover · clock · audio bars; a click on the cover opens the media view (title, artist, previous / pause / next, progress line) and a click elsewhere opens the expanded view (decision 10).
 - Two or more: dual status. The highest-priority item takes ¾, the next takes ¼ as a progress ring or icon. Clicking the ¼ swaps them.
 - Priority: needs your input, failed, running with progress, music, time. Ties go to the newest.
 
@@ -206,7 +206,7 @@ A widget is a React component plus a Rust provider that feeds it. Providers are 
 | Weather | Open-Meteo, city in settings | On expand, if older than 30 minutes | Nothing | No |
 | Events | iCal link (Google Calendar: Settings → Integrate calendar → secret iCal address) | On expand, if older than 5 minutes | Every 5 minutes | "Starts in 10 minutes" |
 | Activities and agent board | Activity store | Event-driven | Event-driven | Yes |
-| Now playing | Windows media session events | Event-driven | Event-driven | Song change, optional |
+| Now playing | Windows media session events | Event-driven | Event-driven | Song change updates the cover; nothing pops |
 | Timer | Built in, with a Pomodoro mode (focus sessions and breaks, "Session 2 of 4"); end time saved to disk | Every second | Ring updates every 5 seconds | "Time's up" |
 | Volume | Windows Core Audio endpoint events | Event-driven | Nothing | No |
 | Brightness | WMI (laptop screen); DDC/CI (external monitors) | Read on expand | Nothing | No |
@@ -299,7 +299,7 @@ dual_status = true
 [notifications]
 do_not_disturb = false
 agents       = { pop = true,  details = true }
-music        = { pop = true,  details = true }   # song-change pop
+music        = { pop = true,  details = true }   # kept for later; nothing pops for a song change
 calendar     = { pop = true,  details = true, minutes_before = 10 }   # pops come from the reserved calendar: source
 downloads    = { pop = false }
 windows_apps = { pop = true,  details = false }  # needs Windows permission
@@ -386,7 +386,7 @@ Thirteen milestones from now to v1.0, each ending in something you can see worki
 | 3 | It hangs from the edge | Sun 29 Nov | The peek, flush with the top of the screen, showing the time; the three visibility modes; hidden in fullscreen | First GIF |
 | 4 | Tap on the shoulder | Sun 6 Dec | Claude Code needs input, the pill pops with an Open terminal button; dual status with a `wrap` progress ring; per-source pop settings | GIF: "my agent now taps me on the shoulder" |
 | 5 | Lean when idle | Thu 10 Dec | Peek CPU and memory measured and in the README; a one-day spike answers whether Windows notifications can work | The numbers |
-| 6 | My day at a glance | Fri 18 Dec | Hover expands to the main screen: weather, time, events; now playing in the peek with song-change pops | Screenshot of your dashboard |
+| 6 | My day at a glance | Fri 18 Dec | Hover expands to the main screen: weather, time, events; now playing in the peek | Screenshot of your dashboard |
 | 7 | v0.1 in public | Tue 22 Dec | A preview anyone can download from GitHub Releases | "What I built in my summer break" |
 | 8 | Make it mine | Sun 10 Jan | Your widgets screen with edit mode; system screen with volume, per-app volume, brightness, dark mode and Settings shortcuts | Short video of the three screens |
 | 9 | A stranger installs it | Sun 17 Jan | Install from winget, set up from the docs alone, demo video done; Windows notifications if the spike worked | Ask one friend to try it cold |

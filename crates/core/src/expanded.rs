@@ -62,7 +62,7 @@ pub(crate) fn initial_weather(city: Option<&str>) -> WeatherView {
 
 impl Core {
     /// A pop or the undo bar is on screen (the user is about to press it).
-    fn pop_or_undo_showing(&self) -> bool {
+    pub(crate) fn pop_or_undo_showing(&self) -> bool {
         !self.pops.is_empty() || self.undo.is_some()
     }
 
@@ -132,6 +132,9 @@ impl Core {
     }
 
     fn open(&mut self, how: Open, now: Instant) {
+        // The media view gives way to the expanded view.
+        self.media_open = false;
+        self.media_close_at = None;
         self.expanded.open = how;
         self.expanded.expand_at = None;
         self.expanded.collapse_at = None;
@@ -172,8 +175,6 @@ impl Core {
         if let Some(undo) = &mut self.undo {
             undo.until = now + UNDO_DURATION;
         }
-        // A song held back by the open view is announced right now.
-        self.start_pending_notice(now);
         self.coalescer.mark(now);
     }
 

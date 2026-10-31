@@ -62,19 +62,7 @@ button {
 .slot {
   position: absolute;
   top: 0;
-  transition:
-    transform var(--shape-dur) var(--shape-ease),
-    opacity 120ms linear;
-}
-
-/* Content kept mounted but out of sight, so that it fades back in rather than popping. */
-.slot.ghost {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.slot.ghost .content {
-  pointer-events: none;
+  transition: transform var(--shape-dur) var(--shape-ease);
 }
 
 .fill {
@@ -742,20 +730,42 @@ button {
   clip-path: inset(0);
 }
 
-.art.music-art {
+/* The cover is a button: its click opens or closes the media view. */
+.music-cover {
   position: absolute;
   left: var(--m-pad);
   top: 50%;
   width: var(--m-art);
   height: var(--m-art);
   margin-top: calc(var(--m-art) / -2);
-  border-radius: 10px; /* 8 after the plain form's scale */
   transform: translateX(var(--m-art-dx)) scale(var(--m-art-scale));
   transition: transform var(--shape-dur) var(--shape-ease);
 }
 
-.music-hover .art.music-art {
+.music-hover .music-cover {
   transform: none;
+}
+
+.art.art-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px; /* 8 after the plain form's scale */
+}
+
+/* The clock sits in the middle of the plain pill and gives way to title and artist. */
+.music-clock {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  transform: translate(-50%, -50%);
+  transition: opacity 120ms linear;
+}
+
+.music-hover .music-clock {
+  opacity: 0;
 }
 
 .music-title,
@@ -769,36 +779,20 @@ button {
 
 .music-title {
   top: 50%;
+  width: var(--m-title-w);
   margin-top: -8px;
   line-height: 16px;
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
-  transform: translateX(var(--m-title-dx));
-  transition:
-    transform var(--shape-dur) var(--shape-ease),
-    opacity 120ms linear;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 120ms linear;
 }
 
 .music-hover .music-title {
-  transform: translateY(-8px);
-}
-
-.music-title-plain {
-  width: var(--m-title-w-plain);
-}
-
-.music-title-hover {
-  width: var(--m-title-w);
-  opacity: 0;
-}
-
-.music-hover .music-title-plain {
-  opacity: 0;
-}
-
-.music-hover .music-title-hover {
   opacity: 1;
+  transition: opacity var(--dur-normal) var(--spring-grow);
 }
 
 /* Entering grows toward the final state on the grow spring; leaving only fades, fast, and
@@ -869,22 +863,11 @@ button {
 }
 
 /* The dual peek's ¾ keeps its own plain layout, not the hover frame. */
-.music-dual .music-body {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 18px 0 16px;
-}
-
-.dual-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: 600;
+.dual-cover {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  margin-top: -14px;
 }
 
 .art {
@@ -907,24 +890,6 @@ button {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-}
-
-/* The resting cover turns once every 8 s in 64 steps (8 a second), only while the song
-   plays; it is its own small layer. */
-.art-spin {
-  animation: spin 8s steps(64, end) infinite;
-  will-change: transform;
-}
-
-/* Paused, it stays at its angle instead of snapping back. */
-.art-still {
-  animation-play-state: paused;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .art-glyph {
@@ -1057,25 +1022,15 @@ button {
     animation: none;
   }
 
-  .art-spin {
-    animation: none;
-  }
-
   /* Still bars at their resting heights. The progress line keeps moving: it is information. */
   .audio-bars i {
     animation: none;
   }
 
   .media-button,
-  .art.music-art,
-  .music-title,
+  .music-cover,
   .bar.music-progress {
     transition: none;
-  }
-
-  .music-title-plain,
-  .music-title-hover {
-    transition: opacity 120ms linear;
   }
 
   /* The artist and buttons only cross-fade. */

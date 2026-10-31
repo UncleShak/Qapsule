@@ -136,14 +136,12 @@ pub struct Core {
     events: EventsView,
     /// What Windows is playing, as the media provider last said.
     media: Option<MediaState>,
-    /// The last song seen (title, artist), kept while nothing plays, to spot a change.
-    last_song: Option<(String, String)>,
     /// The music state the UI was last told about, to judge whether a new report is news.
     media_shown: Option<MediaState>,
-    /// While set, the peek shows the full music pill: the song notice (decision 0009).
-    notice_until: Option<Instant>,
-    /// A new song waiting for the expanded view to close before it is announced.
-    notice_pending: Option<(String, String)>,
+    /// The media view (decision 0010) is open: the 400 x 56 song form replaces the peek.
+    media_open: bool,
+    /// When an open media view closes because the pointer left it.
+    media_close_at: Option<Instant>,
     pointer_over: bool,
     hover_until: Option<Instant>,
     coalescer: Coalescer,
@@ -169,10 +167,9 @@ impl Core {
             // The calendar provider says `NoLink` when no link is set.
             events: EventsView::Loading,
             media: None,
-            last_song: None,
             media_shown: None,
-            notice_until: None,
-            notice_pending: None,
+            media_open: false,
+            media_close_at: None,
             pointer_over: false,
             hover_until: None,
             coalescer: Coalescer::new(UI_UPDATE_INTERVAL),
@@ -337,6 +334,9 @@ impl Core {
     /// Shows `activity` as a pop in place of any earlier pop for `key`.
     fn push_pop(&mut self, key: Key, activity: Activity, until: Option<Instant>) {
         self.pops.retain(|p| p.key != key);
+        // A pop covers the media view: it closes.
+        self.media_open = false;
+        self.media_close_at = None;
         self.pop_seq += 1;
         self.pops.push(Pop {
             key,
@@ -544,19 +544,8 @@ impl Core {
     /// Swaps the ¾ and ¼ items of the dual peek, or swaps them back.
     pub fn swap_peek(&mut self, now: Instant) {
         let ranked = self.peek_ranked();
-        // With music the ¼ is always the music and the ¾ the top activity; the time has
-        // nothing to swap with.
-        let pair = if self.media.is_some() && self.settings.dual_status {
-            ranked
-                .iter()
-                .find(|(k, _)| !media::is_media_key(k))
-                .map(|(k, _)| (k.clone(), media::media_key()))
-        } else if let [(a, _), (b, _), ..] = ranked.as_slice() {
-            Some((a.clone(), b.clone()))
-        } else {
-            None
-        };
-        if let Some(pair) = pair {
+        if let [(a, _), (b, _), ..] = ranked.as_slice() {
+            let pair = (a.clone(), b.clone());
             self.swapped = if self.swapped.as_ref() == Some(&pair) {
                 None
             } else {
@@ -571,10 +560,14 @@ impl Core {
         if over {
             self.pointer_over = true;
             self.hover_until = None;
+            self.media_close_at = None;
             self.expanded_pointer_entered(now);
         } else if self.pointer_over {
             self.pointer_over = false;
             self.hover_until = Some(now + HOVER_GRACE);
+            if self.media_open {
+                self.media_close_at = Some(now + COLLAPSE_GRACE);
+            }
             self.expanded_pointer_left(now);
         }
         self.coalescer.mark(now);
@@ -653,13 +646,9 @@ impl Core {
             self.undo = None;
             changed = true;
         }
-        if self.notice_until.is_some_and(|until| until <= now) {
-            self.notice_until = None;
+        if self.media_close_at.is_some_and(|at| at <= now) {
+            self.close_media_view(now);
             changed = true;
-        }
-        if !open && self.notice_pending.is_some() {
-            changed = true;
-            self.start_pending_notice(now);
         }
         if self.hover_until.is_some_and(|until| until <= now) {
             self.hover_until = None;
@@ -686,7 +675,7 @@ impl Core {
                 .map(|u| u.until)
                 .filter(|_| !self.expanded.is_open()),
             self.hover_until,
-            self.notice_until,
+            self.media_close_at,
             self.coalescer.due(),
             self.presence.next_deadline(),
         ]
@@ -719,6 +708,7 @@ impl Core {
             self.pointer_over = false;
             self.expanded_pointer_left(now);
         }
+        self.close_media_view(now);
         self.presence.webview_gone(now)
     }
 
@@ -733,11 +723,7 @@ impl Core {
 
     fn brought_out(&self) -> bool {
         let hovering = self.pointer_over || self.hover_until.is_some();
-        !self.pops.is_empty()
-            || self.undo.is_some()
-            || self.notice_until.is_some()
-            || self.expanded.is_open()
-            || hovering
+        !self.pops.is_empty() || self.undo.is_some() || self.expanded.is_open() || hovering
     }
 
     /// The full UI state right now, for a UI that has just started.
@@ -786,66 +772,29 @@ impl Core {
         ranked
     }
 
-    /// Whether music would be the peek's top item: nothing needs input, has failed or is
-    /// running with progress.
-    fn music_on_top(&self) -> bool {
-        self.store
-            .ranked()
-            .into_iter()
-            .filter(|(k, _)| !is_reserved_source(&k.0))
-            .all(|(_, e)| store::rank(&e.activity) >= 3)
-    }
-
     fn peek(&self, now: Instant) -> Peek {
         let details = self.settings.pop_setting(media::SOURCE).details;
-        let activity_item = |entry: &Entry| {
-            let elapsed = matches!(entry.activity.state, State::Running | State::NeedsInput)
-                .then(|| now.saturating_duration_since(entry.started).as_secs() / 60);
-            PeekItem::Activity(view::item_view(&entry.activity, elapsed))
-        };
-        // The hover form is allowed on a peek whose only item is music, with nothing on
-        // top of it. The pointer is the UI's to watch: it shows the form at once.
-        let closed = !self.expanded.is_open() && self.pops.is_empty() && self.undo.is_none();
-        let ranked = self.peek_ranked();
-
-        if let Some(media) = self.media.as_ref().filter(|_| self.settings.dual_status) {
-            let music =
-                |controls| PeekItem::Music(media::music_view(media, controls, details, now));
-            // The song notice: the full pill while it lasts, if music is still on top.
-            if self.notice_until.is_some() && self.music_on_top() {
-                return Peek::One {
-                    main: music(closed),
-                };
-            }
-            // Otherwise music is the ¼, beside the top activity or the time.
-            return match ranked.iter().find(|(k, _)| !media::is_media_key(k)) {
-                None => Peek::Dual {
-                    main: PeekItem::Time,
-                    side: music(closed),
-                },
-                Some((key, Candidate::Activity(entry))) => {
-                    let swapped = self.swapped.as_ref() == Some(&(key.clone(), media::media_key()));
-                    let (main, side) = if swapped {
-                        (music(false), activity_item(entry))
-                    } else {
-                        (activity_item(entry), music(false))
-                    };
-                    Peek::Dual { main, side }
-                }
-                Some(_) => unreachable!("only activities are not the music key"),
-            };
-        }
-
         let item = |candidate: &Candidate, controls: bool| match candidate {
-            Candidate::Activity(entry) => activity_item(entry),
+            Candidate::Activity(entry) => {
+                let elapsed = matches!(entry.activity.state, State::Running | State::NeedsInput)
+                    .then(|| now.saturating_duration_since(entry.started).as_secs() / 60);
+                PeekItem::Activity(view::item_view(&entry.activity, elapsed))
+            }
             Candidate::Music(media) => {
                 PeekItem::Music(media::music_view(media, controls, details, now))
             }
         };
+        // While the media view is open the song replaces the whole peek, dual or not.
+        if let (true, Some(media)) = (self.media_open, &self.media) {
+            return Peek::One {
+                main: PeekItem::Music(media::music_view(media, true, details, now)),
+            };
+        }
+        let ranked = self.peek_ranked();
         match ranked.as_slice() {
             [] => Peek::Idle,
             [(_, only)] => Peek::One {
-                main: item(only, closed),
+                main: item(only, false),
             },
             [(_, first), ..] if !self.settings.dual_status => Peek::One {
                 main: item(first, false),
