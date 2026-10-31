@@ -2,7 +2,7 @@
 //! are arguments.
 
 use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
-use qapsule_core::view::{EventNext, EventNow, EventsReady};
+use qapsule_core::view::{EventNext, EventNow, EventsReady, MAX_WEEK_EVENTS};
 use rrule::Tz;
 
 use super::parse::{Occurrence, Span};
@@ -48,42 +48,23 @@ pub fn location_of(occurrence: &Occurrence) -> Option<String> {
         .filter(|l| !l.is_empty())
 }
 
-fn day_prefix(days_away: i64, date: NaiveDate) -> String {
-    match days_away {
-        0 => String::new(),
+/// How many days the card covers, today included.
+const WEEK_DAYS: i64 = 7;
+
+fn day_label(date: NaiveDate, today: NaiveDate) -> String {
+    match (date - today).num_days() {
+        0 => "Today".into(),
         1 => "Tomorrow".into(),
-        2..=6 => date.format("%a").to_string(),
         _ => date.format("%a %-d %b").to_string(),
     }
 }
 
-/// `09:00`, `Tomorrow 09:00` or `Thu 07:30`.
-pub fn when_timed(start: DateTime<Utc>, now: DateTime<Utc>, tz: Tz) -> String {
-    let local = start.with_timezone(&tz);
-    let today = now.with_timezone(&tz).date_naive();
-    let prefix = day_prefix((local.date_naive() - today).num_days(), local.date_naive());
-    let clock = local.format("%H:%M");
-    if prefix.is_empty() {
-        clock.to_string()
-    } else {
-        format!("{prefix} {clock}")
-    }
-}
-
-/// `All day`, `Tomorrow · All day` or `Thu · All day`.
-pub fn when_all_day(date: NaiveDate, today: NaiveDate) -> String {
-    let prefix = day_prefix((date - today).num_days(), date);
-    if prefix.is_empty() {
-        "All day".into()
-    } else {
-        format!("{prefix} · All day")
-    }
-}
-
-/// The card for `now`: the timed event in progress that began last, and the
-/// next two to begin. All-day events are never "now".
+/// The card for `now`: the timed event in progress that began last, and every
+/// event from now until the end of the sixth day after today, grouped by day.
+/// All-day events are never "now".
 pub fn build(occurrences: &[Occurrence], now: DateTime<Utc>, tz: Tz, stale: bool) -> EventsReady {
     let today = now.with_timezone(&tz).date_naive();
+    let limit = today + Duration::days(WEEK_DAYS);
 
     let current = occurrences
         .iter()
@@ -93,24 +74,36 @@ pub fn build(occurrences: &[Occurrence], now: DateTime<Utc>, tz: Tz, stale: bool
         })
         .max_by_key(|(_, start, _)| *start);
 
-    // (local start used for ordering, occurrence, text for `when`)
+    // (label date, timed?, start for ordering, title, time text)
     let mut upcoming: Vec<_> = occurrences
         .iter()
         .filter_map(|o| match &o.span {
-            Span::Timed { start, .. } if *start > now => Some((
-                start.with_timezone(&tz).naive_local(),
-                o,
-                when_timed(*start, now, tz),
-            )),
-            Span::AllDay { start, .. } if *start > today => Some((
-                start.and_hms_opt(0, 0, 0).unwrap(),
-                o,
-                when_all_day(*start, today),
-            )),
+            Span::Timed { start, .. } if *start > now => {
+                let local = start.with_timezone(&tz);
+                (local.date_naive() < limit).then(|| {
+                    (
+                        local.date_naive(),
+                        true,
+                        local.naive_local(),
+                        title_of(o),
+                        local.format("%H:%M").to_string(),
+                    )
+                })
+            }
+            Span::AllDay { start, end } if *end > today && *start < limit => {
+                let label = (*start).max(today);
+                Some((
+                    label,
+                    false,
+                    label.and_hms_opt(0, 0, 0).unwrap(),
+                    title_of(o),
+                    "All day".to_string(),
+                ))
+            }
             _ => None,
         })
         .collect();
-    upcoming.sort_by_key(|a| a.0);
+    upcoming.sort_by(|a, b| (a.0, a.1, a.2, &a.3).cmp(&(b.0, b.1, b.2, &b.3)));
 
     EventsReady {
         now: current.map(|(o, _, end)| EventNow {
@@ -120,10 +113,11 @@ pub fn build(occurrences: &[Occurrence], now: DateTime<Utc>, tz: Tz, stale: bool
         }),
         next: upcoming
             .into_iter()
-            .take(2)
-            .map(|(_, o, when)| EventNext {
-                title: title_of(o),
-                when,
+            .take(MAX_WEEK_EVENTS)
+            .map(|(date, _, _, title, time)| EventNext {
+                title,
+                day: day_label(date, today),
+                time,
             })
             .collect(),
         stale,
@@ -181,20 +175,29 @@ mod tests {
     // Monday 2025-03-10, 10:00 in Johannesburg.
     const NOW: &str = "2025-03-10 08:00";
 
+    fn rows(card: &EventsReady) -> Vec<(&str, &str, &str)> {
+        card.next
+            .iter()
+            .map(|n| (n.day.as_str(), n.time.as_str(), n.title.as_str()))
+            .collect()
+    }
+
     #[test]
     fn the_google_export_makes_the_expected_card() {
         let text = include_str!("../../samples/calendar/google-export.ics");
         let occurrences = super::super::parse::parse_calendar(text, JOBURG, utc(NOW)).unwrap();
         let card = build(&occurrences, utc(NOW), JOBURG, false);
-        let now = card.now.unwrap();
+        let now = card.now.clone().unwrap();
         assert_eq!(now.title, "Daily standup with a folded title");
         assert_eq!(now.until, "11:00");
+        let today: Vec<_> = card.next.iter().filter(|n| n.day == "Today").collect();
         assert_eq!(
-            card.next
+            today
                 .iter()
-                .map(|n| (n.title.as_str(), n.when.as_str()))
+                .map(|n| (n.time.as_str(), n.title.as_str()))
+                .take(2)
                 .collect::<Vec<_>>(),
-            vec![("Design review", "11:30"), ("Weekly sync (moved)", "15:00")]
+            vec![("11:30", "Design review"), ("15:00", "Weekly sync (moved)")]
         );
         assert!(!card.stale);
     }
@@ -205,7 +208,6 @@ mod tests {
             timed("Long", "2025-03-10 06:00", "2025-03-10 12:00"),
             timed("Short", "2025-03-10 07:30", "2025-03-10 08:30"),
             timed("Over", "2025-03-10 05:00", "2025-03-10 08:00"),
-            all_day("Holiday", "2025-03-10"),
         ];
         let card = build(&occurrences, utc(NOW), JOBURG, false);
         assert_eq!(card.now.unwrap().title, "Short");
@@ -213,54 +215,98 @@ mod tests {
     }
 
     #[test]
-    fn next_labels_today_tomorrow_and_weekday_for_timed_and_all_day() {
+    fn days_are_labelled_today_tomorrow_and_by_date() {
         let occurrences = [
-            timed("Today", "2025-03-10 09:00", "2025-03-10 10:00"),
-            all_day("Tomorrow all day", "2025-03-11"),
-            timed("Tomorrow", "2025-03-11 05:30", "2025-03-11 06:00"),
             timed("Later", "2025-03-13 05:30", "2025-03-13 06:00"),
-            all_day("Friday", "2025-03-14"),
-            all_day("Far", "2025-03-17"),
+            timed("Tomorrow", "2025-03-11 05:30", "2025-03-11 06:00"),
+            timed("Today", "2025-03-10 09:00", "2025-03-10 10:00"),
         ];
-        let whens = |from: &str| -> Vec<String> {
-            let now = utc(from);
-            let mut o: Vec<Occurrence> = occurrences.to_vec();
-            o.retain(|x| match &x.span {
-                Span::Timed { start, .. } => *start > now,
-                Span::AllDay { .. } => true,
-            });
-            build(&o, now, JOBURG, false)
-                .next
-                .into_iter()
-                .map(|n| n.when)
-                .collect()
-        };
-        assert_eq!(whens(NOW), vec!["11:00", "Tomorrow · All day"]);
         assert_eq!(
-            whens("2025-03-10 09:30"),
-            vec!["Tomorrow · All day", "Tomorrow 07:30"]
+            rows(&build(&occurrences, utc(NOW), JOBURG, false)),
+            vec![
+                ("Today", "11:00", "Today"),
+                ("Tomorrow", "07:30", "Tomorrow"),
+                ("Thu 13 Mar", "07:30", "Later"),
+            ]
         );
-        assert_eq!(
-            when_timed(utc("2025-03-13 05:30"), utc(NOW), JOBURG),
-            "Thu 07:30"
+        let card = build(
+            &[timed("M", "2026-11-02 05:00", "2026-11-02 06:00")],
+            utc("2026-10-30 08:00"),
+            JOBURG,
+            false,
         );
+        assert_eq!(card.next[0].day, "Mon 2 Nov");
+    }
+
+    #[test]
+    fn the_week_ends_at_local_midnight_seven_days_on() {
+        // Today is Mon 10 Mar; the window ends at 00:00 on Mon 17 Mar local (22:00 UTC on the 16th).
+        let occurrences = [
+            timed("In", "2025-03-16 21:00", "2025-03-16 21:30"),
+            timed("Out", "2025-03-16 22:00", "2025-03-16 22:30"),
+            all_day("Out all day", "2025-03-17"),
+            all_day("In all day", "2025-03-16"),
+        ];
+        let card = build(&occurrences, utc(NOW), JOBURG, false);
         assert_eq!(
-            when_all_day(
-                NaiveDate::from_ymd_opt(2025, 3, 14).unwrap(),
-                NaiveDate::from_ymd_opt(2025, 3, 10).unwrap()
-            ),
-            "Fri · All day"
-        );
-        assert_eq!(
-            when_timed(utc("2025-03-17 05:30"), utc(NOW), JOBURG),
-            "Mon 17 Mar 07:30"
+            rows(&card),
+            vec![
+                ("Sun 16 Mar", "All day", "In all day"),
+                ("Sun 16 Mar", "23:00", "In"),
+            ]
         );
     }
 
     #[test]
-    fn an_all_day_event_that_started_today_is_not_next() {
-        let card = build(&[all_day("Today", "2025-03-10")], utc(NOW), JOBURG, true);
-        assert!(card.now.is_none() && card.next.is_empty() && card.stale);
+    fn all_day_events_running_today_sit_under_today_and_are_never_now() {
+        let mut multi = all_day("Trip", "2025-03-09");
+        multi.span = Span::AllDay {
+            start: NaiveDate::from_ymd_opt(2025, 3, 9).unwrap(),
+            end: NaiveDate::from_ymd_opt(2025, 3, 12).unwrap(),
+        };
+        let past = all_day("Past", "2025-03-09");
+        let occurrences = [
+            timed("Call", "2025-03-10 09:00", "2025-03-10 10:00"),
+            all_day("Holiday", "2025-03-10"),
+            multi,
+            past,
+        ];
+        let card = build(&occurrences, utc(NOW), JOBURG, true);
+        assert!(card.now.is_none() && card.stale);
+        assert_eq!(
+            rows(&card),
+            vec![
+                ("Today", "All day", "Holiday"),
+                ("Today", "All day", "Trip"),
+                ("Today", "11:00", "Call"),
+            ]
+        );
+    }
+
+    #[test]
+    fn events_are_ordered_by_day_then_all_day_then_time_then_title() {
+        let occurrences = [
+            timed("B", "2025-03-11 06:00", "2025-03-11 07:00"),
+            timed("A", "2025-03-11 06:00", "2025-03-11 07:00"),
+            timed("Early", "2025-03-11 05:00", "2025-03-11 07:00"),
+            all_day("Day", "2025-03-11"),
+            timed("Today", "2025-03-10 09:00", "2025-03-10 10:00"),
+        ];
+        let titles: Vec<_> = build(&occurrences, utc(NOW), JOBURG, false)
+            .next
+            .into_iter()
+            .map(|n| n.title)
+            .collect();
+        assert_eq!(titles, ["Today", "Day", "Early", "A", "B"]);
+    }
+
+    #[test]
+    fn the_list_is_capped() {
+        let occurrences: Vec<_> = (0..MAX_WEEK_EVENTS + 20)
+            .map(|i| timed(&format!("E{i}"), "2025-03-12 06:00", "2025-03-12 07:00"))
+            .collect();
+        let card = build(&occurrences, utc(NOW), JOBURG, false);
+        assert_eq!(card.next.len(), MAX_WEEK_EVENTS);
     }
 
     #[test]

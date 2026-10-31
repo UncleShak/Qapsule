@@ -1231,6 +1231,13 @@ fn click_settings() -> Settings {
     }
 }
 
+fn hover_settings() -> Settings {
+    Settings {
+        expand_on: ExpandOn::Hover,
+        ..Settings::default()
+    }
+}
+
 fn is_open(core: &Core, now: Instant) -> bool {
     core.snapshot(now).expanded.is_some()
 }
@@ -1238,7 +1245,7 @@ fn is_open(core: &Core, now: Instant) -> bool {
 #[test]
 fn dwell_opens_the_view_at_180_ms() {
     let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     core.set_pointer(true, clock.now());
     core.tick(clock.advance(179));
     assert!(!is_open(&core, clock.now()));
@@ -1256,7 +1263,7 @@ fn dwell_opens_the_view_at_180_ms() {
 #[test]
 fn a_quick_pass_does_not_open() {
     let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     core.set_pointer(true, clock.now());
     core.set_pointer(false, clock.advance(170));
     core.tick(clock.advance(100));
@@ -1266,7 +1273,7 @@ fn a_quick_pass_does_not_open() {
 #[test]
 fn slowing_down_opens_60_ms_later() {
     let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     core.set_pointer(true, clock.now());
     core.tick(clock.advance(20));
     core.pointer_slowed(clock.now());
@@ -1279,7 +1286,7 @@ fn slowing_down_opens_60_ms_later() {
 #[test]
 fn slowing_down_without_the_pointer_over_does_nothing() {
     let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     core.take_update(clock.now());
     core.pointer_slowed(clock.now());
     core.tick(clock.advance(500));
@@ -1290,7 +1297,7 @@ fn slowing_down_without_the_pointer_over_does_nothing() {
 #[test]
 fn leaving_collapses_after_300_ms_and_returning_cancels() {
     let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     core.set_pointer(true, clock.now());
     core.tick(clock.advance(180));
     assert!(is_open(&core, clock.now()));
@@ -1333,7 +1340,7 @@ fn click_mode_ignores_hover_and_opens_on_a_click() {
 #[test]
 fn hover_mode_ignores_expand_click() {
     let clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     core.expand_click(clock.now());
     assert!(!is_open(&core, clock.now()));
 }
@@ -1341,7 +1348,7 @@ fn hover_mode_ignores_expand_click() {
 #[test]
 fn switching_to_click_mode_ends_a_dwell_in_progress() {
     let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     core.set_pointer(true, clock.now());
     core.set_settings(click_settings(), clock.advance(10));
     core.tick(clock.advance(500));
@@ -1379,7 +1386,7 @@ fn the_hotkey_pins_the_view_open_until_esc_or_the_hotkey() {
 #[test]
 fn esc_closes_a_hover_opened_view_and_clears_its_timers() {
     let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     core.set_pointer(true, clock.now());
     core.tick(clock.advance(180));
     core.set_pointer(false, clock.advance(10));
@@ -1394,7 +1401,7 @@ fn esc_closes_a_hover_opened_view_and_clears_its_timers() {
 #[test]
 fn hover_and_click_never_open_over_a_pop_or_undo_but_the_hotkey_does() {
     let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     upsert(
         &mut core,
         activity("claude-code", "cc", State::NeedsInput),
@@ -1417,7 +1424,7 @@ fn hover_and_click_never_open_over_a_pop_or_undo_but_the_hotkey_does() {
     assert!(!is_open(&clicker, clock.now()));
 
     // The undo bar blocks it too.
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     let mut dismissable = activity("claude-code", "d", State::Running);
     dismissable.actions = vec![action("dismiss", ActionKind::Dismiss, false)];
     upsert(&mut core, dismissable, clock.now());
@@ -1476,7 +1483,7 @@ fn a_needs_input_pop_stays_after_the_view_closes() {
 #[test]
 fn expanded_and_focus_follow_the_state() {
     let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     core.set_clock("09:41".into(), "Sat 31 Oct".into(), clock.now());
     assert!(core.snapshot(clock.now()).expanded.is_none());
     core.set_pointer(true, clock.now());
@@ -1612,14 +1619,16 @@ fn the_widget_views_serialise_with_a_kind_tag() {
         }),
         next: vec![EventNext {
             title: "Lunch".into(),
-            when: "Tomorrow 09:00".into(),
+            day: "Tomorrow".into(),
+            time: "09:00".into(),
         }],
         stale: true,
     });
     let events = value(&events);
     assert_eq!(events["kind"].as_str(), Some("ready"));
     assert_eq!(events["now"]["until"].as_str(), Some("15:20"));
-    assert_eq!(events["next"][0]["when"].as_str(), Some("Tomorrow 09:00"));
+    assert_eq!(events["next"][0]["day"].as_str(), Some("Tomorrow"));
+    assert_eq!(events["next"][0]["time"].as_str(), Some("09:00"));
     assert_eq!(value(&EventsView::NoLink)["kind"].as_str(), Some("no_link"));
 }
 
@@ -1635,12 +1644,12 @@ impl<T: serde::Serialize> ToValue for T {
 
 #[test]
 fn expand_on_is_read_from_general() {
-    assert_eq!(Settings::default().expand_on, ExpandOn::Hover);
-    let (settings, warnings) = Settings::from_toml("[general]\nexpand_on = \"click\"");
-    assert_eq!(settings.expand_on, ExpandOn::Click);
+    assert_eq!(Settings::default().expand_on, ExpandOn::Click);
+    let (settings, warnings) = Settings::from_toml("[general]\nexpand_on = \"hover\"");
+    assert_eq!(settings.expand_on, ExpandOn::Hover);
     assert!(warnings.is_empty());
     let (settings, warnings) = Settings::from_toml("[general]\nexpand_on = \"tap\"");
-    assert_eq!(settings.expand_on, ExpandOn::Hover);
+    assert_eq!(settings.expand_on, ExpandOn::Click);
     assert_eq!(warnings.len(), 1, "{warnings:?}");
 }
 
@@ -1777,7 +1786,7 @@ fn calendar_minutes_before_is_read_and_range_checked() {
 #[test]
 fn a_lost_webview_means_the_pointer_left() {
     let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     core.set_pointer(true, clock.now());
     core.tick(clock.advance(180));
     core.provider_upsert(activity("windows:X", "n1", State::Info), clock.now())
@@ -1805,14 +1814,14 @@ fn dwell_opens_the_view_when_tucked_too() {
     let mut clock = Clock::new();
     let on_demand = Settings {
         visibility: VisibilityMode::OnDemand,
-        ..Settings::default()
+        ..hover_settings()
     };
     let mut core = Core::new(on_demand, clock.now());
     core.set_pointer(true, clock.now());
     core.tick(clock.advance(180));
     assert!(is_open(&core, clock.now()));
 
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     core.set_fullscreen(true, clock.now());
     core.set_pointer(true, clock.now());
     core.pointer_slowed(clock.advance(10));
@@ -1897,7 +1906,7 @@ fn a_city_over_100_characters_is_ignored() {
 #[test]
 fn esc_while_the_pointer_is_over_is_not_undone_until_it_leaves() {
     let mut clock = Clock::new();
-    let mut core = Core::new(Settings::default(), clock.now());
+    let mut core = Core::new(hover_settings(), clock.now());
     core.set_pointer(true, clock.now());
     core.tick(clock.advance(200));
     assert!(is_open(&core, clock.now()));

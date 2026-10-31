@@ -1,4 +1,4 @@
-import type { EventsReady, EventsView } from "../types";
+import type { EventNext, EventsReady, EventsView } from "../types";
 
 export function Events({ events }: { events: EventsView }) {
   return (
@@ -33,7 +33,6 @@ function Body({ events }: { events: EventsView }) {
 
 function Ready({ events }: { events: EventsReady }) {
   const { now, next } = events;
-  const nothing = !now && next.length === 0;
   return (
     <>
       {now && (
@@ -43,19 +42,34 @@ function Ready({ events }: { events: EventsReady }) {
           {now.location && <span className="widget-caption">{now.location}</span>}
         </div>
       )}
-      {now && next.length > 0 && <hr className="divider" />}
-      {next.length > 0 && (
-        <ul className="event-next">
-          {next.slice(0, 2).map((event, i) => (
-            <li key={i}>
-              <span className="event-name">{event.title}</span>
-              <span className="event-when">{event.when}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {nothing && <p className="widget-note">Nothing else today</p>}
+      {now && <hr className="divider" />}
+      <div className="event-scroll">
+        {groups(next).map((group) => (
+          <section key={group.day} className="event-day">
+            <h3 className="event-day-name">{group.day}</h3>
+            <ul className="event-next">
+              {group.items.map((event, i) => (
+                <li key={i}>
+                  <span className="event-time">{event.time}</span>
+                  <span className="event-name">{event.title}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+        {next.length === 0 && <p className="event-empty">Nothing else this week</p>}
+      </div>
       {events.stale && <span className="widget-caption stale">Updated a while ago</span>}
     </>
   );
+}
+
+function groups(next: EventNext[]): { day: string; items: EventNext[] }[] {
+  const out: { day: string; items: EventNext[] }[] = [];
+  for (const event of next) {
+    const last = out[out.length - 1];
+    if (last && last.day === event.day) last.items.push(event);
+    else out.push({ day: event.day, items: [event] });
+  }
+  return out;
 }

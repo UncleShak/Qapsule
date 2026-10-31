@@ -90,7 +90,8 @@ export interface EventNow {
 
 export interface EventNext {
   title: string;
-  when: string;
+  day: string;
+  time: string;
 }
 
 export interface EventsReady {

@@ -31,7 +31,7 @@ Hover the pill and it opens into a dashboard. Scroll, swipe or use the arrow key
 | --- | --- | --- |
 | Timer | Weather for your city | Volume, mute and per-app volume |
 | Agent board | Time and date | Music controls |
-| Downloads | Current and next calendar event | Brightness, including supported external monitors |
+| Downloads | Current event and the coming week | Brightness, including supported external monitors |
 | GitHub and dev servers (for developers) | | Dark mode toggle |
 | | | Quick links to Wi-Fi, Bluetooth, display, sound and power settings |
 

@@ -91,9 +91,14 @@ pub struct EventNow {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EventNext {
     pub title: String,
-    /// `09:00`, `Tomorrow 09:00` or `Thu 07:30`.
-    pub when: String,
+    /// Group label: `Today`, `Tomorrow` or `Mon 2 Nov`.
+    pub day: String,
+    /// `08:30` local, or `All day`.
+    pub time: String,
 }
+
+/// The most events the week list carries.
+pub const MAX_WEEK_EVENTS: usize = 100;
 
 // Built a few times a second at most and serialised at once, so boxing would buy nothing.
 #[allow(clippy::large_enum_variant)]

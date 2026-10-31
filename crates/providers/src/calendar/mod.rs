@@ -808,7 +808,10 @@ mod tests {
         settle().await;
         let card = ready(last_view(&mut h.views));
         assert!(card.now.is_none());
-        assert_eq!(card.next[0].when, "10:30");
+        assert_eq!(
+            (card.next[0].day.as_str(), card.next[0].time.as_str()),
+            ("Today", "10:30")
+        );
 
         advance(30 * 60).await;
         let card = ready(last_view(&mut h.views));

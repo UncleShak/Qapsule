@@ -42,7 +42,7 @@ Twenty features across the peek view and three screens, delivered in three relea
 | Pop notifications from Capsule's sources, each with on/off and show-details settings | Peek | v0.1 | Built in | Per source |
 | Weather (left slot) | Main screen | v0.1 | Open-Meteo, city in settings | Open forecast |
 | Time and date (middle slot) | Main screen | v0.1 | System clock | None |
-| Current and next events (right slot) | Main screen | v0.1 | Calendar iCal link | Open event |
+| Current event and the coming week, scrollable (right slot) | Main screen | v0.1 | Calendar iCal link | Open event |
 | Volume, mute, per-app volume | System screen | Launch | Windows Core Audio | Sliders |
 | Brightness | System screen | Launch | WMI for laptop screens; DDC/CI for external monitors where supported | Slider |
 | Dark mode toggle | System screen | Launch | Registry setting plus a settings-changed broadcast | Toggle |
@@ -289,7 +289,7 @@ One TOML file at `%APPDATA%\Qynetik\Capsule\config.toml`, editable by hand or th
 [general]
 hotkey = "Ctrl+Alt+Space"
 visibility = "auto"        # auto | always | on_demand
-expand_on = "hover"        # hover | click
+expand_on = "click"        # click | hover
 start_with_windows = false
 
 [peek]

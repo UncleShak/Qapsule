@@ -42,9 +42,9 @@ impl VisibilityMode {
 #[serde(rename_all = "snake_case")]
 pub enum ExpandOn {
     /// Hovering the peek (dwell or slowing down).
-    #[default]
     Hover,
     /// Only a click on the peek.
+    #[default]
     Click,
 }
 
@@ -173,7 +173,7 @@ impl Default for Settings {
             dual_status: true,
             do_not_disturb: false,
             notifications: HashMap::new(),
-            expand_on: ExpandOn::Hover,
+            expand_on: ExpandOn::Click,
             screens: default_screens(),
             calendar_minutes_before: 10,
         }
