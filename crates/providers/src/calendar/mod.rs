@@ -29,8 +29,6 @@ pub use parse::{MAX_OCCURRENCES, Occurrence, ParseError, Span, parse_calendar};
 /// Data older than this is fetched again when the main screen opens; with pops
 /// on, it is also fetched this often in the background.
 const REFRESH: Duration = Duration::from_secs(15 * 60);
-/// A pop later than this after its time is skipped (the app was asleep or just started).
-const POP_GRACE: chrono::Duration = chrono::Duration::seconds(60);
 /// Where the pops go.
 const SOURCE: &str = "calendar:events";
 
@@ -372,7 +370,9 @@ impl<F: Fetcher, L: LinkSource> Provider<F, L> {
         chrono::Duration::minutes(i64::from(self.config.minutes_before))
     }
 
-    /// Sends the pop for every timed event whose pop time has just come.
+    /// Sends the pop for every timed event whose pop time has come and that hasn't
+    /// started. An event first seen after its pop time (added late, or found by a
+    /// refresh after it) still pops once, with the minutes actually left.
     fn fire_pops(&mut self, now: DateTime<Utc>) {
         if !self.config.pops {
             return;
@@ -387,11 +387,7 @@ impl<F: Fetcher, L: LinkSource> Provider<F, L> {
             };
             let pop_time = *start - lead;
             let id = pop_id(&occurrence.uid, *start);
-            if *start > now
-                && pop_time <= now
-                && now - pop_time <= POP_GRACE
-                && !self.popped.contains_key(&id)
-            {
+            if *start > now && pop_time <= now && !self.popped.contains_key(&id) {
                 due.push((id, *start, occurrence.clone()));
             }
         }
@@ -408,9 +404,10 @@ impl<F: Fetcher, L: LinkSource> Provider<F, L> {
         occurrence: &Occurrence,
         now: DateTime<Utc>,
     ) -> Activity {
+        // Whole minutes left, rounded up: "Starts in 1 min" in the last minute.
+        let left = ((start - now).num_seconds().max(1) + 59) / 60;
         let mut subtitle = format!(
-            "Starts in {} min · {}",
-            self.config.minutes_before,
+            "Starts in {left} min · {}",
             start.with_timezone(&self.tz).format("%H:%M")
         );
         if let Some(location) = view::location_of(occurrence) {
@@ -790,9 +787,9 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn an_event_past_its_pop_time_by_over_a_minute_never_pops() {
-        // Starting in 5 minutes with a 10-minute lead: its pop time was 5 minutes ago.
-        // The other one's pop time was 30 seconds ago, so it still pops.
+    async fn an_event_found_after_its_pop_time_pops_with_the_minutes_left() {
+        // With a 10-minute lead, both pop times have passed when the feed is first
+        // read; neither has started, so both pop once. One that started never does.
         let body = ics(&[
             ("late", "20250310T080500Z", "20250310T090000Z"),
             ("just", "20250310T080930Z", "20250310T090000Z"),
@@ -800,9 +797,24 @@ mod tests {
         ]);
         let mut h = harness(body, Some(LINK), true);
         settle().await;
-        let pop = h.pops.try_recv().unwrap();
-        assert_eq!(pop.title, "just");
-        assert_eq!(pop.expires_in, Some(570));
+        let first = h.pops.try_recv().unwrap();
+        assert_eq!(first.title, "late");
+        assert!(
+            first
+                .subtitle
+                .unwrap()
+                .starts_with("Starts in 5 min · 10:05")
+        );
+        assert_eq!(first.expires_in, Some(300));
+        let second = h.pops.try_recv().unwrap();
+        assert_eq!(second.title, "just");
+        assert!(
+            second
+                .subtitle
+                .unwrap()
+                .starts_with("Starts in 10 min · 10:09")
+        );
+        assert_eq!(second.expires_in, Some(570));
         advance(60 * 60).await;
         assert!(h.pops.try_recv().is_err());
     }
