@@ -2556,3 +2556,247 @@ fn media_pops_use_the_music_category() {
     );
     assert!(PopSetting::default().pop && PopSetting::default().details);
 }
+
+// The notification history (decision 0009).
+
+fn history_ids(core: &Core) -> Vec<String> {
+    core.history.iter().map(|h| h.view.id.clone()).collect()
+}
+
+/// A finished activity: it pops once.
+fn pop_one(core: &mut Core, id: &str, actions: Vec<Action>, now: Instant) {
+    let mut a = activity("s", id, State::Succeeded);
+    a.actions = actions;
+    upsert(core, a, now);
+    assert_eq!(pop_id(core, now).as_deref(), Some(id));
+}
+
+#[test]
+fn a_dismissed_expired_or_handled_pop_enters_the_history() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_clock("09:41".into(), "Sat 31 Oct".into(), clock.now());
+
+    pop_one(&mut core, "dismissed", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(history_ids(&core), ["dismissed"]);
+    assert_eq!(core.history[0].view.at, "09:41");
+
+    core.set_clock("09:42".into(), "Sat 31 Oct".into(), clock.now());
+    pop_one(&mut core, "expired", vec![], clock.now());
+    core.tick(clock.advance(5_100));
+    assert_eq!(pop_id(&core, clock.now()), None);
+    assert_eq!(history_ids(&core), ["expired", "dismissed"]);
+    assert_eq!(core.history[0].view.at, "09:42", "when it arrived");
+
+    let open = action(
+        "open",
+        ActionKind::OpenUrl {
+            url: "https://example.com".into(),
+        },
+        true,
+    );
+    pop_one(&mut core, "handled", vec![open], clock.now());
+    core.press("s", "handled", "open", clock.now());
+    assert_eq!(history_ids(&core), ["handled", "expired", "dismissed"]);
+}
+
+#[test]
+fn the_history_keeps_three_newest_first_and_replaces_the_same_key() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    for id in ["a", "b", "c", "d"] {
+        pop_one(&mut core, id, vec![], clock.now());
+        core.tick(clock.advance(5_100));
+    }
+    assert_eq!(history_ids(&core), ["d", "c", "b"]);
+
+    // The same key again moves to the front and keeps one entry.
+    let mut again = activity("s", "b", State::Failed);
+    again.title = "second".into();
+    upsert(&mut core, again, clock.now());
+    core.tick(clock.advance(5_100));
+    assert_eq!(history_ids(&core), ["b", "d", "c"]);
+    assert_eq!(core.history[0].view.title, "second");
+}
+
+#[test]
+fn an_undone_dismissal_is_not_history() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    pop_one(&mut core, "a", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(history_ids(&core), ["a"]);
+    core.undo(clock.now());
+    assert!(history_ids(&core).is_empty());
+}
+
+#[test]
+fn song_notices_and_never_shown_pops_are_not_history() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    start_notice(&mut core, &clock);
+    core.tick(clock.advance(5_100));
+    assert!(history_ids(&core).is_empty(), "a song notice");
+
+    // Do Not Disturb stops pops before they exist.
+    let mut core = provider_core("[notifications]\ndo_not_disturb = true\n", &clock);
+    upsert(
+        &mut core,
+        activity("s", "quiet", State::Succeeded),
+        clock.now(),
+    );
+    assert!(history_ids(&core).is_empty());
+
+    // A pop that arrived while the view was open and was cleared before it closed was never seen.
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.toggle_expanded(clock.advance(10));
+    upsert(
+        &mut core,
+        activity("s", "unseen", State::Succeeded),
+        clock.now(),
+    );
+    core.handle(
+        1,
+        ClientMessage::Clear {
+            source: Some("s".into()),
+            id: Some("unseen".into()),
+        },
+        clock.now(),
+    );
+    core.close_expanded(clock.advance(10));
+    assert!(history_ids(&core).is_empty());
+
+    // One that was on screen before the view opened was seen, even if it goes while open.
+    let mut core = Core::new(Settings::default(), clock.now());
+    pop_one(&mut core, "seen", vec![], clock.now());
+    core.toggle_expanded(clock.advance(10));
+    core.handle(
+        1,
+        ClientMessage::Clear {
+            source: Some("s".into()),
+            id: Some("seen".into()),
+        },
+        clock.now(),
+    );
+    assert_eq!(history_ids(&core), ["seen"]);
+}
+
+#[test]
+fn history_text_honours_details() {
+    let clock = Clock::new();
+    let mut core = provider_core(
+        "[notifications]\n\"windows:Fake\" = { details = false }\n",
+        &clock,
+    );
+    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
+        .unwrap();
+    core.dismiss_pop(clock.now());
+    let entry = &core.history[0].view;
+    assert_ne!(entry.title, "n1 title");
+    assert_eq!(entry.subtitle, None);
+
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.provider_upsert(activity("windows:Fake", "n1", State::Info), clock.now())
+        .unwrap();
+    core.dismiss_pop(clock.now());
+    assert_eq!(core.history[0].view.title, "n1 title");
+    assert_eq!(
+        core.history[0].view.subtitle.as_deref(),
+        Some("n1 subtitle")
+    );
+}
+
+#[test]
+fn the_history_is_in_the_expanded_view_only() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    pop_one(&mut core, "a", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    assert!(core.snapshot(clock.now()).expanded.is_none());
+    core.toggle_expanded(clock.advance(10));
+    let history = core.snapshot(clock.now()).expanded.unwrap().history;
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].id, "a");
+    assert!(!history[0].actionable);
+}
+
+#[test]
+fn pressing_a_history_entry_runs_the_primary_action_and_keeps_the_entry() {
+    let clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+
+    let open = action(
+        "open",
+        ActionKind::OpenUrl {
+            url: "https://example.com".into(),
+        },
+        true,
+    );
+    pop_one(&mut core, "link", vec![open], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(
+        core.press_history("s", "link"),
+        Some(Effect::OpenUrl("https://example.com".into()))
+    );
+
+    let focus = action("focus", ActionKind::FocusWindow { pid: 42 }, true);
+    pop_one(&mut core, "window", vec![focus], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(
+        core.press_history("s", "window"),
+        Some(Effect::FocusWindow(42))
+    );
+
+    // A Windows notification opens through the provider.
+    let mut w = activity("windows:Fake", "n1", State::Info);
+    w.actions = vec![action("open", ActionKind::Callback, true)];
+    core.provider_upsert(w, clock.now()).unwrap();
+    core.dismiss_pop(clock.now());
+    assert_eq!(
+        core.press_history("windows:Fake", "n1"),
+        Some(Effect::Provider {
+            source: "windows:Fake".into(),
+            id: "n1".into(),
+            action: "open".into(),
+        })
+    );
+
+    // A client's callback goes to its connection (1 in these tests)...
+    let cb = action("go", ActionKind::Callback, true);
+    pop_one(&mut core, "call", vec![cb], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(
+        core.press_history("s", "call"),
+        Some(Effect::Callback {
+            conn: 1,
+            message: ServerMessage::Action {
+                source: "s".into(),
+                id: "call".into(),
+                action: "go".into(),
+            },
+        })
+    );
+    // ...and is dropped once that connection has gone, but the entry stays.
+    core.connection_closed(1);
+    assert_eq!(core.press_history("s", "call"), None);
+    assert!(core.history.iter().any(|h| h.view.id == "call"));
+
+    // No action, no effect; an unknown entry, none either.
+    pop_one(&mut core, "plain", vec![], clock.now());
+    core.dismiss_pop(clock.now());
+    assert_eq!(core.press_history("s", "plain"), None);
+    assert_eq!(core.press_history("s", "nope"), None);
+}
+
+#[test]
+fn closing_the_view_starts_a_held_song_notice_at_once() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(Some(song("One", "Band", true, clock.now())), clock.now());
+    core.toggle_expanded(clock.advance(10));
+    core.set_media(Some(song("Two", "Band", true, clock.now())), clock.now());
+    core.close_expanded(clock.advance(10));
+    // No tick in between.
+    assert!(has_notice(&core, clock.now()));
+}

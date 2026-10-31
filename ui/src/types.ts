@@ -78,6 +78,22 @@ export interface ExpandedView {
   date: string;
   weather: WeatherView;
   events: EventsView;
+  /** The last notifications that left the screen, newest first. */
+  history: HistoryView[];
+}
+
+export interface HistoryView {
+  source: string;
+  id: string;
+  source_label: string;
+  title: string;
+  subtitle: string | null;
+  state: ActivityState;
+  icon: string;
+  /** The local time it arrived, like `09:41`. */
+  at: string;
+  /** Pressing it does something. */
+  actionable: boolean;
 }
 
 export interface HourView {

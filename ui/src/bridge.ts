@@ -26,6 +26,7 @@ export function subscribe(apply: (state: UiState) => void): () => void {
 
 export const press = (source: string, id: string, action: string) =>
   invoke("press_action", { source, id, action });
+export const pressHistory = (source: string, id: string) => invoke("press_history", { source, id });
 export const dismissPop = () => invoke("dismiss_pop");
 export const undo = () => invoke("undo");
 export const swapPeek = () => invoke("swap_peek");

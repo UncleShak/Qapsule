@@ -9,7 +9,7 @@ export function Expanded({ state, expanded }: { state: UiState; expanded: Expand
   return (
     <div className="main-screen">
       <Weather weather={expanded.weather} />
-      <Clock time={state.clock} date={expanded.date} />
+      <Clock time={state.clock} date={expanded.date} history={expanded.history} />
       <Events events={expanded.events} />
     </div>
   );

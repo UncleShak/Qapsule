@@ -236,11 +236,13 @@ fn process(
             engine.provider_upsert(activity);
         }
         UserNotificationChangedKind::Removed => {
+            // The app stays known (bounded by MAX_TRACKED, no text), so the
+            // notification history can still open it after Windows removes the toast.
             let removed = tracked
                 .lock()
                 .ok()
-                .and_then(|mut t| t.remove(&id.to_string()));
-            if let Some((source, _)) = removed {
+                .and_then(|t| t.source_of(&id.to_string()));
+            if let Some(source) = removed {
                 engine.provider_remove(source, id.to_string());
             }
         }

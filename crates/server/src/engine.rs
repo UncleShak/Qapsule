@@ -58,6 +58,10 @@ enum Command {
         id: String,
         action: String,
     },
+    PressHistory {
+        source: String,
+        id: String,
+    },
     ProviderUpsert(Box<Activity>),
     ProviderRemove {
         source: String,
@@ -121,6 +125,11 @@ impl Engine {
 
     pub fn press(&self, source: String, id: String, action: String) {
         self.send(Command::Press { source, id, action });
+    }
+
+    /// A notification in the expanded view's history was pressed.
+    pub fn press_history(&self, source: String, id: String) {
+        self.send(Command::PressHistory { source, id });
     }
 
     /// An in-process provider adds or updates an activity in a reserved source.
@@ -262,6 +271,15 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
                 core.connection_closed(conn);
             }
             Command::Press { source, id, action } => match core.press(&source, &id, &action, now) {
+                Some(Effect::Callback { conn, message }) => {
+                    if let Some(out) = conns.get(&conn) {
+                        let _ = out.send(message);
+                    }
+                }
+                Some(effect) => shell.run(effect),
+                None => {}
+            },
+            Command::PressHistory { source, id } => match core.press_history(&source, &id) {
                 Some(Effect::Callback { conn, message }) => {
                     if let Some(out) = conns.get(&conn) {
                         let _ = out.send(message);

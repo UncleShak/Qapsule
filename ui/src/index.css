@@ -236,22 +236,90 @@ button {
   height: 20px;
 }
 
+/* The clock column is split: 52 px for the time (Hero small, with the date beside it), a
+   divider, then three 24 px rows of recent notifications: 52 + 4 + 72 = 128. */
 .widget-clock {
+  gap: 0;
+}
+
+.clock-top {
+  display: flex;
+  flex: none;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 12px;
+  height: 52px;
 }
 
 .widget-time {
   font-family: var(--font-display);
-  font-size: 72px;
+  font-size: 48px;
   font-weight: 600;
-  line-height: 72px;
-  letter-spacing: -0.03em;
+  line-height: 48px;
+  letter-spacing: -0.02em;
 }
 
 .widget-date {
   font-size: 13px;
+  color: var(--text-3);
+}
+
+.history-divider {
+  flex: none;
+  height: 1px;
+  margin-bottom: 3px;
+  background: var(--track);
+}
+
+.history {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.history-empty {
+  margin: auto 0;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-3);
+}
+
+.history-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: var(--r-control);
+  text-align: left;
+}
+
+.history-action:hover {
+  background: var(--fill-hover);
+}
+
+.history-icon {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.history-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.history-at {
+  flex: none;
+  font-size: 12px;
   color: var(--text-3);
 }
 

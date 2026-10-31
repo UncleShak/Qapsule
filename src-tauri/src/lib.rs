@@ -116,6 +116,11 @@ fn press_action(state: State<'_, AppState>, source: String, id: String, action: 
 }
 
 #[tauri::command]
+fn press_history(state: State<'_, AppState>, source: String, id: String) {
+    state.engine.press_history(source, id);
+}
+
+#[tauri::command]
 fn dismiss_pop(state: State<'_, AppState>) {
     state.engine.dismiss_pop();
 }
@@ -424,6 +429,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             press_action,
+            press_history,
             dismiss_pop,
             undo,
             swap_peek,

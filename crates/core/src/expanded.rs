@@ -153,16 +153,27 @@ impl Core {
         }
         // A pop whose activity ran out while nobody could see it is stale; a finished
         // activity's pop is its own copy and still shows.
-        let store = &self.store;
-        self.pops.retain(|pop| {
-            pop.until.is_none()
-                || crate::media::is_media_key(&pop.key)
-                || matches!(pop.activity.state, State::Succeeded | State::Failed)
-                || store.get(&pop.key).is_some()
-        });
+        let stale: Vec<_> = self
+            .pops
+            .iter()
+            .filter(|pop| {
+                !(pop.until.is_none()
+                    || crate::media::is_media_key(&pop.key)
+                    || matches!(pop.activity.state, State::Succeeded | State::Failed)
+                    || self.store.get(&pop.key).is_some())
+            })
+            .map(|pop| pop.key.clone())
+            .collect();
+        self.retire_where(|pop| stale.contains(&pop.key));
+        // What is left shows now.
+        for pop in &mut self.pops {
+            pop.shown = true;
+        }
         if let Some(undo) = &mut self.undo {
             undo.until = now + UNDO_DURATION;
         }
+        // A song held back by the open view is announced right now.
+        self.start_pending_notice(now);
         self.coalescer.mark(now);
     }
 

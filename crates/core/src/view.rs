@@ -30,6 +30,24 @@ pub struct ExpandedView {
     pub date: String,
     pub weather: WeatherView,
     pub events: EventsView,
+    /// The last notifications that left the screen, newest first (decision 0009).
+    pub history: Vec<HistoryView>,
+}
+
+/// One notification that has left the screen, as the history lists it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HistoryView {
+    pub source: String,
+    pub id: String,
+    pub source_label: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub state: State,
+    pub icon: String,
+    /// The local time it arrived, like `09:41`.
+    pub at: String,
+    /// Pressing the entry does something.
+    pub actionable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
