@@ -156,6 +156,7 @@ impl Core {
         let store = &self.store;
         self.pops.retain(|pop| {
             pop.until.is_none()
+                || crate::media::is_media_key(&pop.key)
                 || matches!(pop.activity.state, State::Succeeded | State::Failed)
                 || store.get(&pop.key).is_some()
         });

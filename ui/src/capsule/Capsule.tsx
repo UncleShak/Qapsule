@@ -3,7 +3,7 @@
 
 import { type CSSProperties, type ReactNode, type TransitionEvent, useEffect, useRef, useState } from "react";
 import { dismissPop, expandClick, press, setHitRects, swapPeek, undo } from "../bridge";
-import type { ItemView, PopView, UiState } from "../types";
+import type { ItemView, PeekItem, PopView, UiState } from "../types";
 import { Arch, Shape } from "./Shape";
 import { Glyph, stateGlyph } from "./Glyph";
 import { Expanded } from "../widgets/Expanded";
@@ -194,8 +194,8 @@ function Content({ state, rest, now }: { state: UiState; rest: Layout; now: Layo
       </Slot>
     );
   }
-  const main = state.peek.main;
-  const side = state.peek.kind === "dual" ? state.peek.side : null;
+  const main = asItem(state.peek.main);
+  const side = state.peek.kind === "dual" ? asItem(state.peek.side) : null;
   return (
     <>
       <Slot rest={rest.main} now={now.main} key={`${rest.kind}-main-${main.source}/${main.id}`}>
@@ -208,6 +208,24 @@ function Content({ state, rest, now }: { state: UiState; rest: Layout; now: Layo
       )}
     </>
   );
+}
+
+/** Until the music view exists, a song draws as an ordinary item: its title and a music glyph. */
+function asItem(item: PeekItem): ItemView {
+  if (item.kind === "activity") return item;
+  return {
+    source: item.source,
+    id: item.id,
+    source_label: "Music",
+    title: item.title,
+    subtitle: item.artist,
+    state: "info",
+    progress: null,
+    indeterminate: false,
+    icon: "music",
+    elapsed_min: null,
+    primary_action: null,
+  };
 }
 
 function caption(item: ItemView): string | null {

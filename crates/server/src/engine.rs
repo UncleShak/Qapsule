@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use qapsule_core::{
-    ConnId, Core, Effect, EventsView, PresenceEffect, Settings, UiState, WeatherView,
+    ConnId, Core, Effect, EventsView, MediaState, PresenceEffect, Settings, UiState, WeatherView,
 };
 use qapsule_protocol::{Activity, ClientMessage, ServerMessage};
 use tokio::sync::{mpsc, oneshot};
@@ -73,6 +73,7 @@ enum Command {
     CloseExpanded,
     Weather(WeatherView),
     Events(EventsView),
+    Media(Option<MediaState>),
     EdgeHover,
     Fullscreen(bool),
     Settings(Settings),
@@ -178,6 +179,11 @@ impl Engine {
         self.send(Command::Events(events));
     }
 
+    /// The media provider has the current song, or `None` when nothing plays.
+    pub fn set_media(&self, media: Option<MediaState>) {
+        self.send(Command::Media(media));
+    }
+
     /// The pointer touched the strip at the top edge where a tucked capsule hides.
     pub fn edge_hover(&self) {
         self.send(Command::EdgeHover);
@@ -281,6 +287,7 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
             Command::CloseExpanded => core.close_expanded(now),
             Command::Weather(weather) => core.set_weather(weather, now),
             Command::Events(events) => core.set_events(events, now),
+            Command::Media(media) => core.set_media(media, now),
             Command::EdgeHover => core.reveal_from_edge(now),
             Command::Fullscreen(fullscreen) => core.set_fullscreen(fullscreen, now),
             Command::Settings(settings) => core.set_settings(settings, now),

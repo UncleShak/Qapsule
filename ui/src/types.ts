@@ -17,10 +17,30 @@ export interface ItemView {
   primary_action: string | null;
 }
 
+/** The song playing now (decision 0008). Its key is always `media:` / `now-playing`. */
+export interface MusicView {
+  source: string;
+  id: string;
+  app: string;
+  title: string;
+  artist: string;
+  /** A URL on the `qapsule-art` scheme. */
+  art: string | null;
+  playing: boolean;
+  /** As of this snapshot; the UI animates from here. */
+  position_ms: number | null;
+  length_ms: number | null;
+  /** How fast the position moves: 1 is normal, 0 when paused or not moving. */
+  rate: number;
+  controls: boolean;
+}
+
+export type PeekItem = ({ kind: "activity" } & ItemView) | ({ kind: "music" } & MusicView);
+
 export type Peek =
   | { kind: "idle" }
-  | { kind: "one"; main: ItemView }
-  | { kind: "dual"; main: ItemView; side: ItemView };
+  | { kind: "one"; main: PeekItem }
+  | { kind: "dual"; main: PeekItem; side: PeekItem };
 
 export interface ActionView {
   id: string;

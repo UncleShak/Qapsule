@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use qapsule_core::{Effect, Peek, PresenceEffect, Settings, UiState};
+use qapsule_core::{Effect, Peek, PeekItem, PresenceEffect, Settings, UiState};
 use qapsule_protocol::{ErrorCode, ServerMessage, decode_server};
 use qapsule_server::{Engine, Listener, Shell};
 
@@ -435,6 +435,9 @@ fn ui_updates_are_coalesced_however_fast_clients_push() {
     }
     let Peek::One { main } = &during.last().unwrap().1.peek else {
         panic!()
+    };
+    let PeekItem::Activity(main) = main else {
+        panic!("expected an activity")
     };
     assert_eq!(main.progress, Some(0.95), "the last value is never lost");
 }

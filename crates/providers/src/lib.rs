@@ -2,5 +2,6 @@
 //! `provider_upsert` and `provider_remove`; it never touches the UI.
 
 pub mod calendar;
+pub mod media;
 pub mod notifications;
 pub mod weather;

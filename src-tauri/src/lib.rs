@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use qapsule_core::{Effect, PresenceEffect, Settings, UiState, VisibilityMode};
 use qapsule_providers::calendar::{Calendar, CalendarConfig};
+use qapsule_providers::media::{ArtStore, Media, SCHEME as ART_SCHEME};
 use qapsule_providers::notifications::{Notifications, Status};
 use qapsule_providers::weather::Weather;
 use qapsule_server::config::{Change, Live};
@@ -33,6 +34,8 @@ struct WindowShell {
     /// Set once the engine exists; the shell is built before it.
     notifications: Arc<OnceLock<Notifications>>,
     /// Set once the engine exists, like `notifications`.
+    media: Arc<OnceLock<Media>>,
+    /// Set once the engine exists, like `notifications`.
     weather: Arc<OnceLock<Weather>>,
     calendar: Arc<OnceLock<Calendar>>,
     focus: Arc<window::Focus>,
@@ -52,6 +55,11 @@ impl Shell for WindowShell {
             Effect::Provider { source, id, action } if source.starts_with("windows:") => {
                 if let Some(notifications) = self.notifications.get() {
                     notifications.act(&source, &id, &action);
+                }
+            }
+            Effect::Provider { source, id, action } if source == "media:" => {
+                if let Some(media) = self.media.get() {
+                    media.act(&source, &id, &action);
                 }
             }
             effect => run_effect(effect),
@@ -358,9 +366,35 @@ fn start_config_watch(app: &AppHandle) {
     }
 }
 
+/// Answers the `qapsule-art` scheme from memory: the current cover for exactly
+/// its hash, nothing else. The page reaches it as `http://qapsule-art.localhost/<hash>`.
+fn serve_art(
+    art: &ArtStore,
+    request: &tauri::http::Request<Vec<u8>>,
+) -> tauri::http::Response<Vec<u8>> {
+    let png = (request.method() == tauri::http::Method::GET)
+        .then(|| art.get(request.uri().path().trim_start_matches('/')))
+        .flatten();
+    match png {
+        Some(png) => tauri::http::Response::builder()
+            .header("Content-Type", "image/png")
+            .header("Cache-Control", "public, max-age=31536000, immutable")
+            .body(png.as_ref().clone()),
+        None => tauri::http::Response::builder()
+            .status(404)
+            .body(Vec::new()),
+    }
+    .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let art = Arc::new(ArtStore::default());
+    let art_for_scheme = art.clone();
     tauri::Builder::default()
+        .register_uri_scheme_protocol(ART_SCHEME, move |_ctx, request| {
+            serve_art(&art_for_scheme, &request)
+        })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             press_action,
@@ -387,11 +421,13 @@ pub fn run() {
             let notifications = Arc::new(OnceLock::new());
             let weather = Arc::new(OnceLock::new());
             let calendar = Arc::new(OnceLock::new());
+            let media = Arc::new(OnceLock::new());
             let focus = Arc::new(window::Focus::default());
             let shell = WindowShell {
                 app: app.handle().clone(),
                 lifecycle: lifecycle.clone(),
                 notifications: notifications.clone(),
+                media: media.clone(),
                 weather: weather.clone(),
                 calendar: calendar.clone(),
                 focus: focus.clone(),
@@ -419,6 +455,8 @@ pub fn run() {
                 }
             };
 
+            // Follows Windows' media events; costs nothing between them.
+            let _ = media.set(Media::start(engine.clone(), art));
             let tray = build_tray(app, &settings, notifications.clone())?;
             let status_item = tray.status;
             // Only an unmet permission is actionable; the rest is information.

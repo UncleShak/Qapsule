@@ -108,9 +108,37 @@ pub enum Peek {
     /// Nothing happening: the time.
     Idle,
     /// One thing happening: it takes the whole pill.
-    One { main: ItemView },
+    One { main: PeekItem },
     /// Two or more: the top item takes ¾, the next ¼.
-    Dual { main: ItemView, side: ItemView },
+    Dual { main: PeekItem, side: PeekItem },
+}
+
+/// One thing in the peek: a pushed activity, or the music Windows is playing.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PeekItem {
+    Activity(ItemView),
+    Music(MusicView),
+}
+
+/// The song playing now. Its key is always `media:` / `now-playing`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MusicView {
+    pub source: String,
+    pub id: String,
+    pub app: String,
+    pub title: String,
+    pub artist: String,
+    /// A URL on the `qapsule-art` scheme.
+    pub art: Option<String>,
+    pub playing: bool,
+    /// Where the song is as of this snapshot; the UI animates from here.
+    pub position_ms: Option<u64>,
+    pub length_ms: Option<u64>,
+    /// How fast the position moves: 1.0 is normal, 0.0 when paused or not moving.
+    pub rate: f64,
+    /// Previous, play or pause and next show (the pointer is over a lone music item).
+    pub controls: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -161,6 +189,7 @@ pub fn source_label(source: &str) -> String {
         "claude-code" => "Claude Code".into(),
         "codex" => "Codex".into(),
         "wrap" => "Command".into(),
+        crate::media::SOURCE => "Music".into(),
         other if is_calendar(other) => "Calendar".into(),
         other => match other.split_once(':') {
             Some((_, name)) if qapsule_protocol::is_reserved_source(other) => {
@@ -194,6 +223,9 @@ fn is_calendar(source: &str) -> bool {
 
 /// The line a pop shows when details are off for an activity from `source`.
 pub fn generic_title(source: &str, state: State) -> &'static str {
+    if source == crate::media::SOURCE {
+        return "Now playing";
+    }
     if is_calendar(source) {
         return "Upcoming event";
     }

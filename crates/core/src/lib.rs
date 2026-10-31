@@ -3,6 +3,7 @@
 //! that depends on time takes `now`, so tests can drive time by hand.
 
 mod expanded;
+mod media;
 pub mod presence;
 pub mod settings;
 pub mod store;
@@ -16,6 +17,7 @@ use qapsule_protocol::{
     is_reserved_source,
 };
 
+pub use media::{MediaState, Timeline};
 pub use presence::{Presence, PresenceEffect};
 pub use settings::{ExpandOn, Screen, WidgetConfig, WidgetKind, WidgetSize};
 pub use settings::{PopSetting, Settings, VisibilityMode};
@@ -23,7 +25,7 @@ pub use store::{Entry, Key, Store};
 pub use timing::{Coalescer, RateLimiter};
 pub use view::{
     ActionView, EventNext, EventNow, EventsReady, EventsView, ExpandedView, HourView, ItemView,
-    Peek, PopView, UiState, WeatherReady, WeatherView,
+    MusicView, Peek, PeekItem, PopView, UiState, WeatherReady, WeatherView,
 };
 
 /// Identifies one pipe connection.
@@ -75,6 +77,14 @@ struct Pop {
     /// `None` for pops that stay until handled.
     until: Option<Instant>,
     seq: u64,
+    /// The song a music pop announced, for its player name and for undo.
+    song: Option<media::SongInfo>,
+}
+
+/// One thing the peek can rank.
+enum Candidate<'a> {
+    Activity(&'a Entry),
+    Music(&'a MediaState),
 }
 
 #[derive(Debug)]
@@ -99,6 +109,12 @@ pub struct Core {
     expanded: expanded::Expanded,
     weather: WeatherView,
     events: EventsView,
+    /// What Windows is playing, as the media provider last said.
+    media: Option<MediaState>,
+    /// The last song seen (title, artist), kept while nothing plays, to spot a change.
+    last_song: Option<(String, String)>,
+    /// The music state the UI was last told about, to judge whether a new report is news.
+    media_shown: Option<MediaState>,
     pointer_over: bool,
     hover_until: Option<Instant>,
     coalescer: Coalescer,
@@ -122,6 +138,9 @@ impl Core {
             weather,
             // The calendar provider says `NoLink` when no link is set.
             events: EventsView::Loading,
+            media: None,
+            last_song: None,
+            media_shown: None,
             pointer_over: false,
             hover_until: None,
             coalescer: Coalescer::new(UI_UPDATE_INTERVAL),
@@ -240,6 +259,7 @@ impl Core {
     }
 
     /// Whether a source's text must be hidden everywhere: a provider source with details off.
+    /// Music is not in the store; its peek view and pop apply the same setting themselves.
     fn text_hidden(&self, source: &str) -> bool {
         is_reserved_source(source) && !self.settings.pop_setting(source).details
     }
@@ -278,13 +298,26 @@ impl Core {
         if !pops || self.settings.do_not_disturb || !self.settings.pop_setting(&key.0).pop {
             return;
         }
+        let until = (state != State::NeedsInput).then_some(now + POP_DURATION);
+        self.push_pop(key, activity, until, None);
+    }
+
+    /// Shows `activity` as a pop in place of any earlier pop for `key`.
+    fn push_pop(
+        &mut self,
+        key: Key,
+        activity: Activity,
+        until: Option<Instant>,
+        song: Option<media::SongInfo>,
+    ) {
         self.pops.retain(|p| p.key != key);
         self.pop_seq += 1;
         self.pops.push(Pop {
             key,
             activity,
-            until: (state != State::NeedsInput).then_some(now + POP_DURATION),
+            until,
             seq: self.pop_seq,
+            song,
         });
         if self.pops.len() > MAX_POPS {
             // Drop the oldest timed pop; a pop waiting for input goes only if all are.
@@ -307,6 +340,9 @@ impl Core {
         now: Instant,
     ) -> Option<Effect> {
         let key = (source.to_string(), id.to_string());
+        if media::is_media_key(&key) {
+            return self.press_media(action_id);
+        }
         let entry = self.store.get(&key);
         let activity = entry
             .map(|e| &e.activity)
@@ -375,6 +411,13 @@ impl Core {
             self.store.restore(key, entry);
         }
         if let Some(mut pop) = undo.pop {
+            // A song pop for a song that has since changed is stale.
+            if pop.song.as_ref().is_some_and(|s| !self.song_is_current(s)) {
+                self.coalescer.mark(now);
+                return;
+            }
+            // A pop that came after the dismissal is the newer one; never show two.
+            self.pops.retain(|p| p.key != pop.key);
             if pop.until.is_some() {
                 pop.until = Some(now + POP_DURATION);
             }
@@ -387,7 +430,7 @@ impl Core {
     pub fn swap_peek(&mut self, now: Instant) {
         let ranked = self.peek_ranked();
         if let [(a, _), (b, _), ..] = ranked.as_slice() {
-            let pair = ((*a).clone(), (*b).clone());
+            let pair = (a.clone(), b.clone());
             self.swapped = if self.swapped.as_ref() == Some(&pair) {
                 None
             } else {
@@ -580,35 +623,65 @@ impl Core {
         }
     }
 
-    /// What the peek ranks: pushed activities only. Provider notifications are
-    /// pop-only, though they stay in the store (and in `list`).
-    fn peek_ranked(&self) -> Vec<(&Key, &Entry)> {
-        let mut ranked = self.store.ranked();
-        ranked.retain(|(k, _)| !is_reserved_source(&k.0));
+    /// What the peek ranks: pushed activities and the music. Provider notifications
+    /// are pop-only, though they stay in the store (and in `list`). Music sits
+    /// between running activities with progress and those without.
+    fn peek_ranked(&self) -> Vec<(Key, Candidate<'_>)> {
+        let mut ranked: Vec<(Key, Candidate)> = self
+            .store
+            .ranked()
+            .into_iter()
+            .filter(|(k, _)| !is_reserved_source(&k.0))
+            .map(|(k, e)| (k.clone(), Candidate::Activity(e)))
+            .collect();
+        if let Some(media) = &self.media {
+            let at = ranked
+                .iter()
+                .position(
+                    |(_, c)| matches!(c, Candidate::Activity(e) if store::rank(&e.activity) >= 3),
+                )
+                .unwrap_or(ranked.len());
+            ranked.insert(at, (media::media_key(), Candidate::Music(media)));
+        }
         ranked
     }
 
     fn peek(&self, now: Instant) -> Peek {
-        let item = |entry: &Entry| {
-            let elapsed = matches!(entry.activity.state, State::Running | State::NeedsInput)
-                .then(|| now.saturating_duration_since(entry.started).as_secs() / 60);
-            view::item_view(&entry.activity, elapsed)
+        let details = self.settings.pop_setting(media::SOURCE).details;
+        let item = |candidate: &Candidate, controls: bool| match candidate {
+            Candidate::Activity(entry) => {
+                let elapsed = matches!(entry.activity.state, State::Running | State::NeedsInput)
+                    .then(|| now.saturating_duration_since(entry.started).as_secs() / 60);
+                PeekItem::Activity(view::item_view(&entry.activity, elapsed))
+            }
+            Candidate::Music(media) => {
+                PeekItem::Music(media::music_view(media, controls, details, now))
+            }
         };
         let ranked = self.peek_ranked();
+        // Controls show on a lone music item under the pointer, with nothing on top of it.
+        let controls = self.pointer_over
+            && !self.expanded.is_open()
+            && self.pops.is_empty()
+            && self.undo.is_none();
         match ranked.as_slice() {
             [] => Peek::Idle,
-            [(_, only)] => Peek::One { main: item(only) },
-            [(_, first), ..] if !self.settings.dual_status => Peek::One { main: item(first) },
+            [(_, only)] => Peek::One {
+                main: item(only, controls),
+            },
+            [(_, first), ..] if !self.settings.dual_status => Peek::One {
+                main: item(first, controls),
+            },
             [(a, first), (b, second), ..] => {
-                let swapped = self.swapped.as_ref() == Some(&((*a).clone(), (*b).clone()));
+                let swapped = self.swapped.as_ref() == Some(&(a.clone(), b.clone()));
                 let (main, side) = if swapped {
                     (second, first)
                 } else {
                     (first, second)
                 };
                 Peek::Dual {
-                    main: item(main),
-                    side: item(side),
+                    main: item(main, false),
+                    side: item(side, false),
                 }
             }
         }
@@ -627,7 +700,12 @@ impl Core {
             } else {
                 view::generic_title(&activity.source, activity.state).into()
             },
-            subtitle: details.then(|| activity.subtitle.clone()).flatten(),
+            subtitle: if details {
+                activity.subtitle.clone()
+            } else {
+                // A song pop with details off still names the player.
+                pop.song.as_ref().map(|s| s.app.clone())
+            },
             state: activity.state,
             icon: view::icon_for(activity),
             actions: activity

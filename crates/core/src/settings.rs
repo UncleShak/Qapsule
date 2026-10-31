@@ -188,6 +188,9 @@ pub fn category(source: &str) -> &'static str {
     {
         return "calendar";
     }
+    if source == crate::media::SOURCE {
+        return "music";
+    }
     if qapsule_protocol::is_reserved_source(source) {
         return "windows_apps";
     }

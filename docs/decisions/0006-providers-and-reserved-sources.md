@@ -65,3 +65,4 @@ For the core's input interface, the larger `core.apply(Input)` refactor (archite
 **2026-10-31, new prefix**
 
 - **`calendar:` is reserved** for the calendar provider's pops (source `calendar:events`). See decision 0007.
+- **`media:` is reserved** (2026-10-31) for now playing (key `media:` / `now-playing`), so no pipe client can pose as the player. See decision 0008.
