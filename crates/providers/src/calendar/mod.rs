@@ -28,7 +28,7 @@ pub use parse::{MAX_OCCURRENCES, Occurrence, ParseError, Span, parse_calendar};
 
 /// Data older than this is fetched again when the main screen opens; with pops
 /// on, it is also fetched this often in the background.
-const REFRESH: Duration = Duration::from_secs(15 * 60);
+const REFRESH: Duration = Duration::from_secs(5 * 60);
 /// Where the pops go.
 const SOURCE: &str = "calendar:events";
 
@@ -633,7 +633,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn opening_refreshes_after_fifteen_minutes_not_before() {
+    async fn opening_refreshes_after_five_minutes_not_before() {
         let mut h = harness(ics(&[]), Some(LINK), false);
         h.calendar.main_screen(true);
         settle().await;
@@ -643,7 +643,7 @@ mod tests {
             Some(EventsView::Ready(_))
         ));
 
-        advance(14 * 60).await;
+        advance(4 * 60).await;
         h.calendar.main_screen(true);
         settle().await;
         assert_eq!(h.fetches(), 1);
@@ -703,15 +703,15 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn with_pops_it_refreshes_in_the_background_every_fifteen_minutes() {
+    async fn with_pops_it_refreshes_in_the_background_every_five_minutes() {
         let mut h = harness(ics(&[]), Some(LINK), true);
         settle().await;
         assert_eq!(h.fetches(), 1);
-        advance(14 * 60 + 59).await;
+        advance(4 * 60 + 59).await;
         assert_eq!(h.fetches(), 1);
         advance(1).await;
         assert_eq!(h.fetches(), 2);
-        advance(15 * 60).await;
+        advance(5 * 60).await;
         assert_eq!(h.fetches(), 3);
         // Closed: the screen is not touched.
         assert!(h.views.try_recv().is_err());

@@ -23,8 +23,8 @@ In Windows Credential Manager, under `Qapsule/calendar-ical`. It is never writte
 
 ## When it refreshes
 
-- When you open the main screen, if the data is older than 15 minutes.
-- Every 15 minutes in the background, only if calendar pops are on.
+- When you open the main screen, if the data is older than 5 minutes.
+- Every 5 minutes in the background, only if calendar pops are on. An event added at short notice pops as soon as Qapsule sees it, saying how many minutes are left.
 
 A new link applies at the next refresh. If a refresh fails, the last events stay on screen marked as out of date.
 

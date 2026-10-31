@@ -203,7 +203,7 @@ A widget is a React component plus a Rust provider that feeds it. Providers are 
 | --- | --- | --- | --- | --- |
 | Time | System clock | Every 30 seconds | Once a minute, on the minute | No |
 | Weather | Open-Meteo, city in settings | On expand, if older than 30 minutes | Nothing | No |
-| Events | iCal link (Google Calendar: Settings → Integrate calendar → secret iCal address) | On expand, if older than 15 minutes | Every 15 minutes | "Starts in 10 minutes" |
+| Events | iCal link (Google Calendar: Settings → Integrate calendar → secret iCal address) | On expand, if older than 5 minutes | Every 5 minutes | "Starts in 10 minutes" |
 | Activities and agent board | Activity store | Event-driven | Event-driven | Yes |
 | Now playing | Windows media session events | Event-driven | Event-driven | Song change, optional |
 | Timer | Built in, with a Pomodoro mode (focus sessions and breaks, "Session 2 of 4"); end time saved to disk | Every second | Ring updates every 5 seconds | "Time's up" |
