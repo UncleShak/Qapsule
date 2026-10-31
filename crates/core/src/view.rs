@@ -117,6 +117,8 @@ pub enum Peek {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PeekItem {
+    /// The time, as the idle peek draws it: the ¾ beside the cover when nothing else happens.
+    Time,
     Activity(ItemView),
     Music(MusicView),
 }

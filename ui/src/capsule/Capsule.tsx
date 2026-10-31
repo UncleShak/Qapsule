@@ -3,7 +3,7 @@
 
 import { type CSSProperties, type ReactNode, type TransitionEvent, useEffect, useRef, useState } from "react";
 import { dismissPop, expandClick, press, setHitRects, swapPeek, undo } from "../bridge";
-import type { ItemView, PeekItem, PopView, UiState } from "../types";
+import type { ItemView, MusicView, PeekItem, PopView, UiState } from "../types";
 import { Arch, Shape } from "./Shape";
 import { Glyph, stateGlyph } from "./Glyph";
 import { MusicBubble, MusicMain, MusicPeek } from "./Music";
@@ -16,13 +16,19 @@ function kindOf(state: UiState): LayoutKind {
   if (state.expanded) return "expanded";
   if (state.pop) return "pop";
   if (state.undo) return "undo";
-  if (state.peek.kind === "one") {
-    const main = state.peek.main;
-    if (main.kind === "music") return main.controls ? "music_hover" : "music";
-    return "one";
-  }
+  if (state.peek.kind === "one") return state.peek.main.kind === "music" ? "music" : "one";
   if (state.peek.kind === "dual") return "dual";
   return "idle";
+}
+
+/** The song when it is the peek's only item: the notice pill, or the cover beside the time.
+ *  Hovering it grows the whole peek into the song's 400 x 56 form. */
+function loneMusic(state: UiState): MusicView | null {
+  if (state.expanded || state.pop || state.undo) return null;
+  const peek = state.peek;
+  if (peek.kind === "one" && peek.main.kind === "music") return peek.main;
+  if (peek.kind === "dual" && peek.main.kind === "time" && peek.side.kind === "music") return peek.side;
+  return null;
 }
 
 const isMusic = (k: LayoutKind) => k === "music" || k === "music_hover";
@@ -43,6 +49,8 @@ function motion(from: Shown | null, to: Shown): [string, number] {
 }
 
 function change(from: LayoutKind | null, to: LayoutKind, replaced: boolean): [string, number] {
+  // A song notice starting over the time and cover grows; its end (music to dual) settles.
+  if (from === "dual" && to === "music") return ["--spring-grow", 220];
   if (from === to) return replaced ? ["--spring-replace", 220] : ["--spring-settle", 180];
   if (to === "expanded") return ["--spring-expand", 280];
   if (from === "expanded") return ["--spring-collapse", 220];
@@ -55,7 +63,7 @@ function change(from: LayoutKind | null, to: LayoutKind, replaced: boolean): [st
 
 /** `hovered` is the pointer being over the capsule: a purely visual stretch, so it lives here. */
 export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }) {
-  let kind = kindOf(state);
+  const baseKind = kindOf(state);
   // A new webview first paints the capsule tucked (with nothing clickable), then slides
   // it in, so a recreated webview never flashes into place half-drawn.
   const [entered, setEntered] = useState(false);
@@ -79,11 +87,12 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
     return () => window.removeEventListener("resize", onResize);
   }, []);
   // The expanded capsule never stretches.
-  const stretched = hovered && !tucked && kind !== "expanded";
+  const stretched = hovered && !tucked && baseKind !== "expanded";
   // A song's hover form needs the core to allow it and the pointer to be over the pill: the
   // shape and the content change together, on the pointer's own event.
-  const wide = kind === "music_hover" && stretched;
-  if (kind === "music_hover" && !wide) kind = "music";
+  const lone = loneMusic(state);
+  const wide = !!lone && lone.controls && stretched;
+  const kind: LayoutKind = wide ? "music_hover" : baseKind;
   // The shape stretches on hover; the content keeps its size and place.
   const l = layout(kind, stretched);
   // A song's content is laid out in its hover frame; the plain form is that under transforms.
@@ -92,12 +101,9 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   // Remember the last shape, to pick the spring and to cover both shapes while changing.
   // The spring is picked only when the shape changes, so an unrelated update (the
   // clock, a progress value) can't swap the curve under a running animation.
-  // A song's plain and hover forms are one shape that grows, so they share a kind here.
-  const now: Shown = {
-    kind: isMusic(kind) ? "music" : kind,
-    seq: state.pop?.seq ?? null,
-    hovered: isMusic(kind) ? wide : stretched,
-  };
+  // The hover form is the resting shape (pill or time and cover) stretching, so it keeps the
+  // resting kind and uses the hover and collapse springs.
+  const now: Shown = { kind: baseKind, seq: state.pop?.seq ?? null, hovered: stretched };
   const previous = useRef<Shown | null>(null);
   const chosen = useRef<[string, number]>(["--spring-settle", 180]);
   const p = previous.current;
@@ -159,7 +165,7 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
           <Arch x={l.archX} />
           <Shape box={l.main} />
         </div>
-        <Content state={state} rest={base} now={l} wide={wide} />
+        <Content state={state} rest={base} frame={layout("music_hover")} now={l} wide={wide} />
       </div>
     </div>
   );
@@ -167,12 +173,26 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
 
 /** Holds content over one shape. The content keeps the shape's resting size and only
  *  moves to stay centred while the shape stretches, so text never scales or drifts. */
-function Slot({ rest, now, className = "", children }: { rest: Box; now: Box; className?: string; children: ReactNode }) {
+function Slot({
+  rest,
+  now,
+  className = "",
+  ghost = false,
+  children,
+}: {
+  rest: Box;
+  now: Box;
+  className?: string;
+  /** Faded out and inert: kept mounted so it can fade back instead of popping. */
+  ghost?: boolean;
+  children: ReactNode;
+}) {
   const dx = now.x + now.w / 2 - (rest.x + rest.w / 2);
   const dy = (now.h - rest.h) / 2;
   return (
     <div
-      className="slot"
+      className={`slot ${ghost ? "ghost" : ""}`}
+      inert={ghost}
       style={{ left: rest.x, width: rest.w, height: rest.h, transform: `translate(${dx}px, ${dy}px)` }}
     >
       <div className={`content ${className}`}>{children}</div>
@@ -180,7 +200,19 @@ function Slot({ rest, now, className = "", children }: { rest: Box; now: Box; cl
   );
 }
 
-function Content({ state, rest, now, wide }: { state: UiState; rest: Layout; now: Layout; wide: boolean }) {
+function Content({
+  state,
+  rest,
+  frame,
+  now,
+  wide,
+}: {
+  state: UiState;
+  rest: Layout;
+  frame: Layout;
+  now: Layout;
+  wide: boolean;
+}) {
   // A new key remounts the content, which replays its entrance.
   if (state.expanded) {
     return (
@@ -218,7 +250,27 @@ function Content({ state, rest, now, wide }: { state: UiState; rest: Layout; now
   const main = state.peek.main;
   const side = state.peek.kind === "dual" ? state.peek.side : null;
   const dual = state.peek.kind === "dual";
-  const keyOf = (item: PeekItem) => `${item.source}/${item.id}`;
+  // The time with the song's cover. Hovering swaps both for the song's hover form, all three
+  // staying mounted so that each fades instead of popping.
+  if (main.kind === "time" && side?.kind === "music") {
+    return (
+      <>
+        <Slot rest={rest.main} now={now.main} key="time-main" ghost={wide}>
+          <button type="button" className="clock" onClick={() => expandClick()}>
+            {state.clock}
+          </button>
+        </Slot>
+        <Slot rest={rest.side} now={now.side} key="cover-side" ghost={wide}>
+          <MusicBubble music={side} onClick={() => expandClick()} />
+        </Slot>
+        <Slot rest={frame.main} now={now.main} key="music-hover" ghost={!wide}>
+          <MusicPeek music={side} hover={wide} ghost={!wide} />
+        </Slot>
+      </>
+    );
+  }
+  if (main.kind === "time") return null;
+  const keyOf = (item: Exclude<PeekItem, { kind: "time" }>) => `${item.source}/${item.id}`;
   return (
     <>
       {/* One key for a song's plain and hover forms, so the hover form doesn't replay the entrance. */}
@@ -227,15 +279,19 @@ function Content({ state, rest, now, wide }: { state: UiState; rest: Layout; now
           dual ? (
             <MusicMain music={main} />
           ) : (
-            <MusicPeek music={main} hover={wide && main.controls} />
+            <MusicPeek music={main} hover={wide} />
           )
         ) : (
           <Item item={main} />
         )}
       </Slot>
-      {side && (
+      {side && side.kind !== "time" && (
         <Slot rest={rest.side} now={now.side} key={`side-${keyOf(side)}`}>
-          {side.kind === "music" ? <MusicBubble music={side} /> : <Bubble item={side} />}
+          {side.kind === "music" ? (
+            <MusicBubble music={side} onClick={() => swapPeek()} />
+          ) : (
+            <Bubble item={side} />
+          )}
         </Slot>
       )}
     </>

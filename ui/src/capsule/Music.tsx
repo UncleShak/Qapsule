@@ -3,7 +3,7 @@
 // Whether the controls show, and whether the song is playing, are the core's to say.
 
 import { type CSSProperties, type MouseEvent, useState } from "react";
-import { expandClick, press, swapPeek } from "../bridge";
+import { expandClick, press } from "../bridge";
 import type { MusicView } from "../types";
 import { MUSIC_FRAME as F } from "./geometry";
 import { Glyph } from "./Glyph";
@@ -82,7 +82,7 @@ const FRAME = {
   "--m-progress-lift": `${F.progressLift}px`,
 } as CSSProperties;
 
-export function MusicPeek({ music, hover }: { music: MusicView; hover: boolean }) {
+export function MusicPeek({ music, hover, ghost = false }: { music: MusicView; hover: boolean; ghost?: boolean }) {
   const act = (action: string) => (e: MouseEvent) => {
     e.stopPropagation();
     press(music.source, music.id, action);
@@ -102,7 +102,7 @@ export function MusicPeek({ music, hover }: { music: MusicView; hover: boolean }
           {music.artist || music.app}
         </span>
       </button>
-      <Bars playing={music.playing} />
+      {!ghost && <Bars playing={music.playing} />}
       <span className="music-controls" aria-hidden={!hover}>
         <span className="ctl">
           <button type="button" className="glyph-button media-button" aria-label="Previous" tabIndex={tab} onClick={act("media.previous")}>
@@ -126,7 +126,7 @@ export function MusicPeek({ music, hover }: { music: MusicView; hover: boolean }
           </button>
         </span>
       </span>
-      <Progress music={music} className="music-progress" />
+      {!ghost && <Progress music={music} className="music-progress" />}
     </div>
   );
 }
@@ -144,11 +144,12 @@ export function MusicMain({ music }: { music: MusicView }) {
   );
 }
 
-/** The song as the ¼ bubble: its art as a circle, or the music glyph. Clicking swaps it with the ¾. */
-export function MusicBubble({ music }: { music: MusicView }) {
+/** The song as the ¼ bubble: its art as a round cover that turns while the song plays, or
+ *  the music glyph. A click is the caller's: swap with the ¾, or open the expanded view. */
+export function MusicBubble({ music, onClick }: { music: MusicView; onClick: () => void }) {
   return (
-    <button type="button" className="bubble" onClick={() => swapPeek()} aria-label={`Show ${music.title}`}>
-      <Art art={music.art} className="art-round" />
+    <button type="button" className="bubble" onClick={onClick} aria-label={`Show ${music.title}`}>
+      <Art art={music.art} className={`art-round art-spin ${music.playing ? "" : "art-still"}`} />
     </button>
   );
 }

@@ -77,8 +77,6 @@ struct Pop {
     /// `None` for pops that stay until handled.
     until: Option<Instant>,
     seq: u64,
-    /// The song a music pop announced, for its player name and for undo.
-    song: Option<media::SongInfo>,
 }
 
 /// One thing the peek can rank.
@@ -115,6 +113,10 @@ pub struct Core {
     last_song: Option<(String, String)>,
     /// The music state the UI was last told about, to judge whether a new report is news.
     media_shown: Option<MediaState>,
+    /// While set, the peek shows the full music pill: the song notice (decision 0009).
+    notice_until: Option<Instant>,
+    /// A new song waiting for the expanded view to close before it is announced.
+    notice_pending: Option<(String, String)>,
     pointer_over: bool,
     hover_until: Option<Instant>,
     coalescer: Coalescer,
@@ -141,6 +143,8 @@ impl Core {
             media: None,
             last_song: None,
             media_shown: None,
+            notice_until: None,
+            notice_pending: None,
             pointer_over: false,
             hover_until: None,
             coalescer: Coalescer::new(UI_UPDATE_INTERVAL),
@@ -299,17 +303,11 @@ impl Core {
             return;
         }
         let until = (state != State::NeedsInput).then_some(now + POP_DURATION);
-        self.push_pop(key, activity, until, None);
+        self.push_pop(key, activity, until);
     }
 
     /// Shows `activity` as a pop in place of any earlier pop for `key`.
-    fn push_pop(
-        &mut self,
-        key: Key,
-        activity: Activity,
-        until: Option<Instant>,
-        song: Option<media::SongInfo>,
-    ) {
+    fn push_pop(&mut self, key: Key, activity: Activity, until: Option<Instant>) {
         self.pops.retain(|p| p.key != key);
         self.pop_seq += 1;
         self.pops.push(Pop {
@@ -317,7 +315,6 @@ impl Core {
             activity,
             until,
             seq: self.pop_seq,
-            song,
         });
         if self.pops.len() > MAX_POPS {
             // Drop the oldest timed pop; a pop waiting for input goes only if all are.
@@ -411,11 +408,6 @@ impl Core {
             self.store.restore(key, entry);
         }
         if let Some(mut pop) = undo.pop {
-            // A song pop for a song that has since changed is stale.
-            if pop.song.as_ref().is_some_and(|s| !self.song_is_current(s)) {
-                self.coalescer.mark(now);
-                return;
-            }
             // A pop that came after the dismissal is the newer one; never show two.
             self.pops.retain(|p| p.key != pop.key);
             if pop.until.is_some() {
@@ -429,8 +421,19 @@ impl Core {
     /// Swaps the ¾ and ¼ items of the dual peek, or swaps them back.
     pub fn swap_peek(&mut self, now: Instant) {
         let ranked = self.peek_ranked();
-        if let [(a, _), (b, _), ..] = ranked.as_slice() {
-            let pair = (a.clone(), b.clone());
+        // With music the ¼ is always the music and the ¾ the top activity; the time has
+        // nothing to swap with.
+        let pair = if self.media.is_some() && self.settings.dual_status {
+            ranked
+                .iter()
+                .find(|(k, _)| !media::is_media_key(k))
+                .map(|(k, _)| (k.clone(), media::media_key()))
+        } else if let [(a, _), (b, _), ..] = ranked.as_slice() {
+            Some((a.clone(), b.clone()))
+        } else {
+            None
+        };
+        if let Some(pair) = pair {
             self.swapped = if self.swapped.as_ref() == Some(&pair) {
                 None
             } else {
@@ -527,6 +530,14 @@ impl Core {
             self.undo = None;
             changed = true;
         }
+        if self.notice_until.is_some_and(|until| until <= now) {
+            self.notice_until = None;
+            changed = true;
+        }
+        if !open && self.notice_pending.is_some() {
+            changed = true;
+            self.start_pending_notice(now);
+        }
         if self.hover_until.is_some_and(|until| until <= now) {
             self.hover_until = None;
             changed = true;
@@ -552,6 +563,7 @@ impl Core {
                 .map(|u| u.until)
                 .filter(|_| !self.expanded.is_open()),
             self.hover_until,
+            self.notice_until,
             self.coalescer.due(),
             self.presence.next_deadline(),
         ]
@@ -598,7 +610,11 @@ impl Core {
 
     fn brought_out(&self) -> bool {
         let hovering = self.pointer_over || self.hover_until.is_some();
-        !self.pops.is_empty() || self.undo.is_some() || self.expanded.is_open() || hovering
+        !self.pops.is_empty()
+            || self.undo.is_some()
+            || self.notice_until.is_some()
+            || self.expanded.is_open()
+            || hovering
     }
 
     /// The full UI state right now, for a UI that has just started.
@@ -646,29 +662,69 @@ impl Core {
         ranked
     }
 
+    /// Whether music would be the peek's top item: nothing needs input, has failed or is
+    /// running with progress.
+    fn music_on_top(&self) -> bool {
+        self.store
+            .ranked()
+            .into_iter()
+            .filter(|(k, _)| !is_reserved_source(&k.0))
+            .all(|(_, e)| store::rank(&e.activity) >= 3)
+    }
+
     fn peek(&self, now: Instant) -> Peek {
         let details = self.settings.pop_setting(media::SOURCE).details;
-        let item = |candidate: &Candidate, controls: bool| match candidate {
-            Candidate::Activity(entry) => {
-                let elapsed = matches!(entry.activity.state, State::Running | State::NeedsInput)
-                    .then(|| now.saturating_duration_since(entry.started).as_secs() / 60);
-                PeekItem::Activity(view::item_view(&entry.activity, elapsed))
+        let activity_item = |entry: &Entry| {
+            let elapsed = matches!(entry.activity.state, State::Running | State::NeedsInput)
+                .then(|| now.saturating_duration_since(entry.started).as_secs() / 60);
+            PeekItem::Activity(view::item_view(&entry.activity, elapsed))
+        };
+        // The hover form is allowed on a peek whose only item is music, with nothing on
+        // top of it. The pointer is the UI's to watch: it shows the form at once.
+        let closed = !self.expanded.is_open() && self.pops.is_empty() && self.undo.is_none();
+        let ranked = self.peek_ranked();
+
+        if let Some(media) = self.media.as_ref().filter(|_| self.settings.dual_status) {
+            let music =
+                |controls| PeekItem::Music(media::music_view(media, controls, details, now));
+            // The song notice: the full pill while it lasts, if music is still on top.
+            if self.notice_until.is_some() && self.music_on_top() {
+                return Peek::One {
+                    main: music(closed),
+                };
             }
+            // Otherwise music is the ¼, beside the top activity or the time.
+            return match ranked.iter().find(|(k, _)| !media::is_media_key(k)) {
+                None => Peek::Dual {
+                    main: PeekItem::Time,
+                    side: music(closed),
+                },
+                Some((key, Candidate::Activity(entry))) => {
+                    let swapped = self.swapped.as_ref() == Some(&(key.clone(), media::media_key()));
+                    let (main, side) = if swapped {
+                        (music(false), activity_item(entry))
+                    } else {
+                        (activity_item(entry), music(false))
+                    };
+                    Peek::Dual { main, side }
+                }
+                Some(_) => unreachable!("only activities are not the music key"),
+            };
+        }
+
+        let item = |candidate: &Candidate, controls: bool| match candidate {
+            Candidate::Activity(entry) => activity_item(entry),
             Candidate::Music(media) => {
                 PeekItem::Music(media::music_view(media, controls, details, now))
             }
         };
-        let ranked = self.peek_ranked();
-        // The hover form is allowed on a lone music item with nothing on top of it. The
-        // pointer is the UI's to watch: it shows the form at once, not after an update.
-        let controls = !self.expanded.is_open() && self.pops.is_empty() && self.undo.is_none();
         match ranked.as_slice() {
             [] => Peek::Idle,
             [(_, only)] => Peek::One {
-                main: item(only, controls),
+                main: item(only, closed),
             },
             [(_, first), ..] if !self.settings.dual_status => Peek::One {
-                main: item(first, controls),
+                main: item(first, false),
             },
             [(a, first), (b, second), ..] => {
                 let swapped = self.swapped.as_ref() == Some(&(a.clone(), b.clone()));
@@ -701,8 +757,7 @@ impl Core {
             subtitle: if details {
                 activity.subtitle.clone()
             } else {
-                // A song pop with details off still names the player.
-                pop.song.as_ref().map(|s| s.app.clone())
+                None
             },
             state: activity.state,
             icon: view::icon_for(activity),

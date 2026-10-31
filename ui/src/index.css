@@ -62,7 +62,19 @@ button {
 .slot {
   position: absolute;
   top: 0;
-  transition: transform var(--shape-dur) var(--shape-ease);
+  transition:
+    transform var(--shape-dur) var(--shape-ease),
+    opacity 120ms linear;
+}
+
+/* Content kept mounted but out of sight, so that it fades back in rather than popping. */
+.slot.ghost {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.slot.ghost .content {
+  pointer-events: none;
 }
 
 .fill {
@@ -824,9 +836,27 @@ button {
 }
 
 .art-round {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
+}
+
+/* The resting cover turns once every 8 s in 64 steps (8 a second), only while the song
+   plays; it is its own small layer. */
+.art-spin {
+  animation: spin 8s steps(64, end) infinite;
+  will-change: transform;
+}
+
+/* Paused, it stays at its angle instead of snapping back. */
+.art-still {
+  animation-play-state: paused;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .art-glyph {
@@ -956,6 +986,10 @@ button {
   }
 
   .bar.indeterminate::after {
+    animation: none;
+  }
+
+  .art-spin {
     animation: none;
   }
 

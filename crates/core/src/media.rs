@@ -1,14 +1,12 @@
 //! Now playing (decision 0008): the music Windows reports, ranked into the peek
-//! beside pushed activities, with a pop when the song changes. It is its own
+//! beside pushed activities, with a song notice when the song changes. It is its own
 //! core input and never enters the activity store.
 
 use std::time::{Duration, Instant};
 
-use qapsule_protocol::{Activity, State};
-
 use crate::store::Key;
 use crate::view::MusicView;
-use crate::{Core, Effect, POP_DURATION};
+use crate::{Core, Effect};
 
 /// The fixed key of the music item: the peek swap and the button presses name it.
 pub const SOURCE: &str = "media:";
@@ -52,13 +50,8 @@ pub struct MediaState {
     pub timeline: Option<Timeline>,
 }
 
-/// The song a pop announced, to tell later whether it is still the song playing.
-#[derive(Debug, Clone)]
-pub(crate) struct SongInfo {
-    pub app: String,
-    pub title: String,
-    pub artist: String,
-}
+/// How long the full music pill shows when a song starts or changes (decision 0009).
+pub(crate) const NOTICE_DURATION: Duration = Duration::from_secs(5);
 
 /// How fast the position moves: the rate when it is a sane positive number, else not at all.
 fn speed(rate: f64) -> f64 {
@@ -145,8 +138,8 @@ impl Core {
         let Some(new) = media else {
             self.media = None;
             self.media_shown = None;
-            self.pops.retain(|p| !is_media_key(&p.key));
-            self.drop_media_undo();
+            self.notice_until = None;
+            self.notice_pending = None;
             self.coalescer.mark(now);
             return;
         };
@@ -168,9 +161,11 @@ impl Core {
             }
         }
         if changed {
-            // Undoing the dismissal of the last song's pop would bring back a stale one.
-            self.drop_media_undo();
-            self.pop_song(&new, now);
+            // Only the newest song is worth announcing.
+            self.notice_until = None;
+            self.notice_pending = Some((new.title.clone(), new.artist.clone()));
+            self.media = Some(new.clone());
+            self.start_pending_notice(now);
         }
 
         // Compared with what the UI was last told, so slow drift can't pile up unseen.
@@ -185,55 +180,31 @@ impl Core {
         self.media = Some(new);
     }
 
-    /// Forgets a dismissed song pop that could be brought back.
-    fn drop_media_undo(&mut self) {
-        if let Some(undo) = &mut self.undo {
-            if undo.pop.as_ref().is_some_and(|p| is_media_key(&p.key)) {
-                undo.pop = None;
-            }
-            if undo.removed.is_none() && undo.pop.is_none() {
-                self.undo = None;
-            }
-        }
-    }
-
-    /// Whether a song pop announced the song that is playing now.
-    pub(crate) fn song_is_current(&self, song: &SongInfo) -> bool {
-        self.media
-            .as_ref()
-            .is_some_and(|m| m.title == song.title && m.artist == song.artist)
-    }
-
-    /// Pops the new song, unless Do Not Disturb or the music setting says no.
-    fn pop_song(&mut self, media: &MediaState, now: Instant) {
-        if self.settings.do_not_disturb || !self.settings.pop_setting(SOURCE).pop {
+    /// Starts the song notice for the pending song. It waits while the expanded view is
+    /// open, and is dropped if the song has changed meanwhile, a pop or the undo bar is
+    /// showing, Do Not Disturb is on, the music pop setting is off, or something more
+    /// important is on top.
+    pub(crate) fn start_pending_notice(&mut self, now: Instant) {
+        if self.expanded.is_open() {
             return;
         }
-        let activity = Activity {
-            id: ID.into(),
-            source: SOURCE.into(),
-            title: media.title.clone(),
-            subtitle: Some(if media.artist.is_empty() {
-                media.app.clone()
-            } else {
-                media.artist.clone()
-            }),
-            state: State::Info,
-            progress: None,
-            icon: Some("music".into()),
-            expires_in: None,
-            actions: vec![],
+        let Some(song) = self.notice_pending.take() else {
+            return;
         };
-        self.push_pop(
-            media_key(),
-            activity,
-            Some(now + POP_DURATION),
-            Some(SongInfo {
-                app: media.app.clone(),
-                title: media.title.clone(),
-                artist: media.artist.clone(),
-            }),
-        );
+        let current = self
+            .media
+            .as_ref()
+            .is_some_and(|m| (m.title.clone(), m.artist.clone()) == song);
+        if current
+            && !self.settings.do_not_disturb
+            && self.settings.pop_setting(SOURCE).pop
+            && self.pops.is_empty()
+            && self.undo.is_none()
+            && self.music_on_top()
+        {
+            self.notice_until = Some(now + NOTICE_DURATION);
+            self.coalescer.mark(now);
+        }
     }
 
     /// A music button was pressed: the media provider carries it out.
