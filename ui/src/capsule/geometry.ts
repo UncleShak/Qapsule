@@ -1,7 +1,10 @@
 // Sizes from DESIGN.md section 3, in CSS pixels. The window is 1100 wide; the capsule hangs from its top centre.
 
 export const WINDOW_WIDTH = 1100;
-const CENTRE = WINDOW_WIDTH / 2;
+/** The window's real width: Rust makes it narrower on a monitor narrower than WINDOW_WIDTH. */
+export function windowWidth(): number {
+  return window.innerWidth > 0 ? window.innerWidth : WINDOW_WIDTH;
+}
 export const SHOULDER = 16;
 /** Room around the capsule for its shadow; clicks there are caught too, so keep it small. */
 const SHADOW_SIDE = 8;
@@ -42,7 +45,16 @@ export interface Layout {
 }
 
 function centred(w: number, h: number, r = h / 2 > 28 ? 28 : h / 2, shoulder = SHOULDER): Box {
-  return { x: CENTRE - w / 2, w, h, r, shoulder, left: true, right: true };
+  return { x: windowWidth() / 2 - w / 2, w, h, r, shoulder, left: true, right: true };
+}
+
+const EXPANDED_SHOULDER = 24;
+const EXPANDED_FULL = 1000;
+
+/** The expanded capsule's width: 1000, or less if the window is too narrow to hold it
+ *  with its shoulders and shadow on both sides. */
+export function expandedWidth(width: number): number {
+  return Math.min(EXPANDED_FULL, width - 2 * EXPANDED_SHOULDER - 2 * SHADOW_SIDE);
 }
 
 const SIZES: Record<Exclude<LayoutKind, "dual" | "expanded">, [number, number]> = {
@@ -55,8 +67,9 @@ const SIZES: Record<Exclude<LayoutKind, "dual" | "expanded">, [number, number]> 
 /** The shapes for a state. `hovered` stretches the peek shapes a little wider and taller;
  *  the expanded capsule never stretches. */
 export function layout(kind: LayoutKind, hovered = false): Layout {
+  const CENTRE = windowWidth() / 2;
   if (kind === "expanded") {
-    const main = centred(1000, 176, 32, 24);
+    const main = centred(expandedWidth(windowWidth()), 176, 32, EXPANDED_SHOULDER);
     return { kind, main, side: main, archX: CENTRE - 12, dual: false };
   }
   const dw = hovered ? HOVER.w : 0;

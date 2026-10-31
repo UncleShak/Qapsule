@@ -43,7 +43,8 @@ Carried from docs/plans/expanded-view.md, plus this plan's items. Ticked as each
 - [ ] `scripts/measure-idle.ps1` within budget, with music playing and paused.
 - [ ] 150% and 200% scaling; a display narrower than 1064 logical px (phase B).
 - [ ] Credential Manager: no leftover `Qapsule/test-*` entries.
-- [ ] Phase A: DND holds pops and survives a restart; Start with Windows starts it after sign-in; editing config.toml applies without a restart.
+- [x] Phase A: DND holds pops and survives a restart; editing config.toml applies without a restart (checked 31 Oct).
+- [ ] Start with Windows from a release build starts it after sign-in (dev builds grey it out: their UI needs the Vite server).
 - [ ] Phase C–D: Spotify and a browser video: title, art, progress (none for the browser if it reports none), controls, song-change pop, pause keeps it, closing the player removes it.
 </content>
 </invoke>

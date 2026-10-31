@@ -5,7 +5,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Deserialize;
-use tauri::{AppHandle, PhysicalPosition, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri::{
+    AppHandle, PhysicalPosition, PhysicalSize, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CombineRgn, CreateRectRgn, DeleteObject, RGN_OR, SetWindowRgn,
@@ -88,11 +90,28 @@ fn hwnd(window: &WebviewWindow) -> Option<HWND> {
     window.hwnd().ok().map(|h| HWND(h.0))
 }
 
-/// Centres the window on the primary monitor, touching its top edge.
+/// The window's full width in logical pixels (the same number is in tauri.conf.json
+/// and the UI's geometry.ts); a narrower monitor gets a narrower window.
+const FULL_WIDTH: f64 = 1100.0;
+
+/// The window width in physical pixels: the full width, but never wider than the monitor.
+fn clamped_width(scale: f64, monitor_width: i32) -> u32 {
+    let full = (FULL_WIDTH * scale).round() as i32;
+    full.min(monitor_width).max(1) as u32
+}
+
+/// Sizes the window to the primary monitor (at most its width), then centres it,
+/// touching the top edge.
 pub fn place(window: &WebviewWindow) {
-    let (Some(top), Ok(size)) = (monitor::primary_top_centre(), window.outer_size()) else {
+    let (Some(top), Ok(mut size)) = (monitor::primary_top_centre(), window.outer_size()) else {
         return;
     };
+    let width = clamped_width(top.scale, top.width);
+    if size.width != width {
+        // The resize this causes calls place again, which then finds the width right.
+        let _ = window.set_size(PhysicalSize::new(width, size.height));
+        size.width = width;
+    }
     let x = top.x - size.width as i32 / 2;
     let _ = window.set_position(PhysicalPosition::new(x, top.top));
 }
@@ -235,7 +254,20 @@ mod tests {
         let width = number_after(&read("tauri.conf.json"), "\"width\"");
         let geometry = read("../ui/src/capsule/geometry.ts");
         assert_eq!(width, number_after(&geometry, "WINDOW_WIDTH ="));
-        let css = read("../ui/src/index.css");
-        assert_eq!(width / 2.0, number_after(&css, "transform-origin:"));
+        assert_eq!(width, super::FULL_WIDTH);
+        // The lift scales about the window's top centre, whatever the width.
+        assert!(read("../ui/src/index.css").contains("transform-origin: 50% 0;"));
+    }
+
+    #[test]
+    fn width_is_clamped_to_the_monitor() {
+        use super::clamped_width;
+        // 1080p at 100%: room to spare. 1080p at 200%: 960 logical px.
+        assert_eq!(clamped_width(1.0, 1920), 1100);
+        assert_eq!(clamped_width(2.0, 1920), 1920);
+        assert_eq!(clamped_width(2.0, 2560), 2200);
+        // 1280 px at 150% is 853 logical px.
+        assert_eq!(clamped_width(1.5, 1280), 1280);
+        assert_eq!(clamped_width(1.5, 3840), 1650);
     }
 }

@@ -15,6 +15,8 @@ pub struct TopCentre {
     pub top: i32,
     /// Display scale: 1.0 at 100%.
     pub scale: f64,
+    /// Width of the monitor.
+    pub width: i32,
 }
 
 pub fn primary_top_centre() -> Option<TopCentre> {
@@ -36,6 +38,7 @@ pub fn primary_top_centre() -> Option<TopCentre> {
             x: m.left + (m.right - m.left) / 2,
             top: m.top,
             scale: f64::from(dpi_x.max(96)) / 96.0,
+            width: m.right - m.left,
         })
     }
 }

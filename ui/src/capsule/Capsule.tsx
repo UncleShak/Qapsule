@@ -7,7 +7,7 @@ import type { ItemView, PopView, UiState } from "../types";
 import { Arch, Shape } from "./Shape";
 import { Glyph, stateGlyph } from "./Glyph";
 import { Expanded } from "../widgets/Expanded";
-import { type Box, type Layout, type LayoutKind, type Rect, hitRects, layout, union } from "./geometry";
+import { type Box, type Layout, type LayoutKind, type Rect, hitRects, layout, union, windowWidth } from "./geometry";
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -62,6 +62,14 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
     };
   }, []);
   const tucked = !state.shown || !entered;
+  // The window is narrower on a narrow monitor and Rust may resize it at any time; the
+  // layout follows its width. A resize event, not a timer.
+  const [width, setWidth] = useState(windowWidth);
+  useEffect(() => {
+    const onResize = () => setWidth(windowWidth());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   // The expanded capsule never stretches.
   const stretched = hovered && !tucked && kind !== "expanded";
   // The shape stretches on hover; the content keeps its size and place.
@@ -97,7 +105,7 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
       pending.current = next;
     }
     shownRects.current = next;
-  }, [kind, tucked]);
+  }, [kind, tucked, width]);
   const settle = () => {
     if (pending.current) {
       setHitRects(pending.current);
@@ -113,7 +121,7 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
     if (!pending.current) return;
     const timer = window.setTimeout(settle, duration + 100);
     return () => window.clearTimeout(timer);
-  }, [kind, tucked, duration]);
+  }, [kind, tucked, width, duration]);
 
   const style = {
     "--shape-ease": `var(${curve})`,

@@ -50,7 +50,7 @@ button {
 .lift {
   position: absolute;
   inset: 0;
-  transform-origin: 550px 0;
+  transform-origin: 50% 0;
   transition: transform var(--shape-dur) var(--shape-ease);
 }
 
@@ -155,12 +155,13 @@ button {
   font-weight: 600;
 }
 
-/* The expanded capsule's main screen: three 280 x 128 slots, 40 px apart, no dividers between them. */
+/* The expanded capsule's main screen: three 128 px tall slots, 40 px apart, no dividers between
+   them. The clock keeps 280 px; weather and events are 280 px at full width and shrink with the capsule. */
 
 .main-screen {
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: repeat(3, 280px);
+  grid-template-columns: minmax(0, 1fr) 280px minmax(0, 1fr);
   column-gap: 40px;
   width: 100%;
   height: 100%;
@@ -170,7 +171,6 @@ button {
 .widget {
   display: flex;
   flex-direction: column;
-  width: 280px;
   height: 128px;
   min-width: 0;
   overflow: hidden;
@@ -288,7 +288,11 @@ button {
 
 .hours {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* Five columns when there is room; narrower, trailing hours wrap into zero-height rows and are clipped. */
+  grid-template-columns: repeat(auto-fill, minmax(max(44px, 20%), 1fr));
+  grid-template-rows: auto;
+  grid-auto-rows: 0;
+  overflow: hidden;
   margin: 0;
   padding: 0;
   list-style: none;
