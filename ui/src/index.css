@@ -449,17 +449,19 @@ button {
 }
 
 .widget-events {
-  gap: 6px;
+  gap: 0;
 }
 
-.event-now {
+.event-head {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
 .event-until {
+  height: 16px;
   font-size: 12px;
+  line-height: 16px;
   color: var(--accent);
 }
 
@@ -467,64 +469,82 @@ button {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  height: 20px;
   font-family: var(--font-display);
   font-size: 16px;
   font-weight: 600;
+  line-height: 20px;
+}
+
+.event-head .widget-caption {
+  height: 16px;
+  line-height: 16px;
 }
 
 .divider {
   flex: none;
   height: 0.5px;
-  margin: 2px 0;
+  margin: 4px 0 4.5px;
   border: 0;
   background: var(--divider);
 }
 
-.event-scroll {
+/* Never scrolls: what does not fit is cut in the core ("+N more"); the fade is the
+   safety net for a font that runs taller than the budget. */
+.event-list {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--track) transparent;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
 }
 
 .event-day-name {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  height: 16px;
   margin: 0;
-  padding: 2px 0;
-  background: var(--cap-solid);
   font-family: var(--font-text);
   font-size: 11px;
   font-weight: 600;
+  line-height: 16px;
   color: var(--text-3);
 }
 
-.event-empty {
+.event-empty,
+.event-more {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--text-3);
 }
 
-.event-next {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.event-rows {
   margin: 0;
-  padding: 2px 0 6px;
+  padding: 0;
   list-style: none;
 }
 
-.event-next li {
+.event-row {
   display: flex;
-  align-items: baseline;
+  align-items: stretch;
   gap: 10px;
+  height: 20px;
+  padding: 2px 0;
   font-size: 13px;
+  line-height: 16px;
+}
+
+.event-row.past {
+  opacity: 0.4;
+}
+
+.event-bar {
+  flex: none;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--event-default);
 }
 
 .event-name {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -534,10 +554,14 @@ button {
 
 .event-time {
   flex: none;
-  width: 52px;
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-3);
+}
+
+.event-now-line {
+  height: 9px;
+  background: linear-gradient(var(--accent), var(--accent)) center / 100% 1px no-repeat;
 }
 
 .item {

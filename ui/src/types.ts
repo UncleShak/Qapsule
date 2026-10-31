@@ -120,21 +120,29 @@ export type WeatherView =
   | ({ kind: "ready" } & WeatherReady)
   | { kind: "unavailable" };
 
-export interface EventNow {
+export interface EventHead {
+  caption: string;
   title: string;
-  until: string;
   location: string | null;
 }
 
-export interface EventNext {
+export interface EventRow {
   title: string;
-  day: string;
   time: string;
+  color: string | null;
+  past: boolean;
+}
+
+export interface EventDay {
+  label: string | null;
+  now_line: number | null;
+  rows: EventRow[];
 }
 
 export interface EventsReady {
-  now: EventNow | null;
-  next: EventNext[];
+  head: EventHead | null;
+  days: EventDay[];
+  more: string | null;
   stale: boolean;
 }
 

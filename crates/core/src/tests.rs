@@ -1703,23 +1703,32 @@ fn the_widget_views_serialise_with_a_kind_tag() {
         Some("no_city")
     );
     let events = EventsView::Ready(EventsReady {
-        now: Some(EventNow {
+        head: Some(EventHead {
+            caption: "Now · until 15:20".into(),
             title: "Standup".into(),
-            until: "15:20".into(),
             location: None,
         }),
-        next: vec![EventNext {
-            title: "Lunch".into(),
-            day: "Tomorrow".into(),
-            time: "09:00".into(),
+        days: vec![EventDay {
+            label: Some("Tomorrow".into()),
+            now_line: None,
+            rows: vec![EventRow {
+                title: "Lunch".into(),
+                time: "09:00".into(),
+                color: None,
+                past: false,
+            }],
         }],
+        more: None,
         stale: true,
     });
     let events = value(&events);
     assert_eq!(events["kind"].as_str(), Some("ready"));
-    assert_eq!(events["now"]["until"].as_str(), Some("15:20"));
-    assert_eq!(events["next"][0]["day"].as_str(), Some("Tomorrow"));
-    assert_eq!(events["next"][0]["time"].as_str(), Some("09:00"));
+    assert_eq!(
+        events["head"]["caption"].as_str(),
+        Some("Now · until 15:20")
+    );
+    assert_eq!(events["days"][0]["label"].as_str(), Some("Tomorrow"));
+    assert_eq!(events["days"][0]["rows"][0]["time"].as_str(), Some("09:00"));
     assert_eq!(value(&EventsView::NoLink)["kind"].as_str(), Some("no_link"));
 }
 

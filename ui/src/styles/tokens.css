@@ -21,6 +21,7 @@
   --track: rgba(255, 255, 255, 0.16);
   --ring-track: rgba(255, 255, 255, 0.14);
   --divider: rgba(255, 255, 255, 0.16);
+  --event-default: var(--text-3);
 
   /* Accent: the Windows default dark-mode accent until Rust supplies the user's own */
   --accent: #60cdff;

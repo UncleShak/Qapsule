@@ -669,7 +669,10 @@ mod tests {
         h.calendar.main_screen(true);
         settle().await;
         let first = ready(last_view(&mut h.views));
-        assert!(first.now.is_none() && first.next.len() == 1);
+        assert_eq!(
+            first.head.as_ref().map(|h| h.caption.as_str()),
+            Some("In 10 min")
+        );
         h.calendar.main_screen(false);
         settle().await;
 
@@ -682,7 +685,7 @@ mod tests {
         assert_eq!(views.len(), 2, "the cached view, then the refreshed one");
         let cached = ready(views.first().cloned());
         assert_eq!(
-            cached.now.as_ref().map(|e| e.title.as_str()),
+            cached.head.as_ref().map(|e| e.title.as_str()),
             Some("Review")
         );
         assert!(!cached.stale);
@@ -836,7 +839,7 @@ mod tests {
         settle().await;
         let card = ready(last_view(&mut h.views));
         assert!(card.stale);
-        assert_eq!(card.next.len(), 1);
+        assert!(card.head.is_some());
 
         // The failure did not reset the clock: the next open tries again.
         *h.fake.fail.lock().unwrap() = None;
@@ -878,24 +881,24 @@ mod tests {
         h.calendar.main_screen(true);
         settle().await;
         let card = ready(last_view(&mut h.views));
-        assert!(card.now.is_none());
+        let head = card.head.unwrap();
         assert_eq!(
-            (card.next[0].day.as_str(), card.next[0].time.as_str()),
-            ("Today", "10:30")
+            (head.caption.as_str(), head.title.as_str()),
+            ("In 30 min", "Standup")
         );
 
         advance(30 * 60).await;
         let card = ready(last_view(&mut h.views));
-        let now = card.now.unwrap();
+        let head = card.head.unwrap();
         assert_eq!(
-            (now.title.as_str(), now.until.as_str()),
-            ("Standup", "11:00")
+            (head.title.as_str(), head.caption.as_str()),
+            ("Standup", "Now · until 11:00")
         );
-        assert!(card.next.is_empty());
+        assert!(card.days.is_empty());
 
         advance(30 * 60).await;
         let card = ready(last_view(&mut h.views));
-        assert!(card.now.is_none());
+        assert!(card.head.is_none());
 
         // Closing it stops the updates.
         h.calendar.main_screen(false);

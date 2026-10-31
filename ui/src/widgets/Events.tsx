@@ -1,4 +1,5 @@
-import type { EventNext, EventsReady, EventsView } from "../types";
+import { Fragment } from "react";
+import type { EventsReady, EventsView } from "../types";
 
 export function Events({ events }: { events: EventsView }) {
   return (
@@ -32,44 +33,47 @@ function Body({ events }: { events: EventsView }) {
 }
 
 function Ready({ events }: { events: EventsReady }) {
-  const { now, next } = events;
+  const { head, days, more } = events;
   return (
     <>
-      {now && (
-        <div className="event-now">
-          <span className="event-until">Now · until {now.until}</span>
-          <span className="event-title">{now.title}</span>
-          {now.location && <span className="widget-caption">{now.location}</span>}
-        </div>
+      {head && (
+        <>
+          <div className="event-head">
+            <span className="event-until">{head.caption}</span>
+            <span className="event-title">{head.title}</span>
+            {head.location && <span className="widget-caption">{head.location}</span>}
+          </div>
+          <hr className="divider" />
+        </>
       )}
-      {now && <hr className="divider" />}
-      <div className="event-scroll">
-        {groups(next).map((group) => (
-          <section key={group.day} className="event-day">
-            <h3 className="event-day-name">{group.day}</h3>
-            <ul className="event-next">
-              {group.items.map((event, i) => (
-                <li key={i}>
-                  <span className="event-time">{event.time}</span>
-                  <span className="event-name">{event.title}</span>
-                </li>
+      <div className="event-list">
+        {days.map((day, d) => (
+          <section key={d} className="event-day">
+            {day.label && <h3 className="event-day-name">{day.label}</h3>}
+            <ul className="event-rows">
+              {day.rows.map((event, i) => (
+                <Fragment key={i}>
+                  {day.now_line === i && <li className="event-now-line" aria-hidden="true" />}
+                  <li className={event.past ? "event-row past" : "event-row"}>
+                    <span
+                      className="event-bar"
+                      style={event.color ? { background: event.color } : undefined}
+                    />
+                    <span className="event-name">{event.title}</span>
+                    <span className="event-time">{event.time}</span>
+                  </li>
+                </Fragment>
               ))}
+              {day.now_line === day.rows.length && (
+                <li className="event-now-line" aria-hidden="true" />
+              )}
             </ul>
           </section>
         ))}
-        {next.length === 0 && <p className="event-empty">Nothing else this week</p>}
+        {days.length === 0 && !more && <p className="event-empty">Nothing else this week</p>}
       </div>
+      {more && <p className="event-more">{more}</p>}
       {events.stale && <span className="widget-caption stale">Updated a while ago</span>}
     </>
   );
-}
-
-function groups(next: EventNext[]): { day: string; items: EventNext[] }[] {
-  const out: { day: string; items: EventNext[] }[] = [];
-  for (const event of next) {
-    const last = out[out.length - 1];
-    if (last && last.day === event.day) last.items.push(event);
-    else out.push({ day: event.day, items: [event] });
-  }
-  return out;
 }

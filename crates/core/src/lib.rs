@@ -25,8 +25,8 @@ pub use settings::{PopSetting, Settings, VisibilityMode};
 pub use store::{Entry, Key, Store};
 pub use timing::{Coalescer, RateLimiter};
 pub use view::{
-    ActionView, EventNext, EventNow, EventsReady, EventsView, ExpandedView, HistoryView, HourView,
-    ItemView, MusicView, Peek, PeekItem, PopView, UiState, WeatherReady, WeatherView,
+    ActionView, EventDay, EventHead, EventRow, EventsReady, EventsView, ExpandedView, HistoryView,
+    HourView, ItemView, MusicView, Peek, PeekItem, PopView, UiState, WeatherReady, WeatherView,
 };
 
 /// Identifies one pipe connection.

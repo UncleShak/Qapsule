@@ -93,26 +93,41 @@ pub enum EventsView {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EventsReady {
-    pub now: Option<EventNow>,
-    pub next: Vec<EventNext>,
+    /// The event in progress, or the next one today.
+    pub head: Option<EventHead>,
+    /// Rows grouped by day, already cut to what fits the card.
+    pub days: Vec<EventDay>,
+    /// `+3 more today` or `+3 more` when rows were cut.
+    pub more: Option<String>,
     pub stale: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct EventNow {
+pub struct EventHead {
+    /// `Now · until 15:20` or `In 18 min`.
+    pub caption: String,
     pub title: String,
-    /// End time as `HH:MM`.
-    pub until: String,
     pub location: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct EventNext {
+pub struct EventDay {
+    /// `Today`, `Tomorrow` or `Mon 2 Nov`; none when the head already says it is today.
+    pub label: Option<String>,
+    /// The "now" line goes before the row at this index (today only).
+    pub now_line: Option<usize>,
+    pub rows: Vec<EventRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EventRow {
     pub title: String,
-    /// Group label: `Today`, `Tomorrow` or `Mon 2 Nov`.
-    pub day: String,
     /// `08:30` local, or `All day`.
     pub time: String,
+    /// The event's colour as `#rrggbb`; none until a colour source is set.
+    pub color: Option<String>,
+    /// Finished today.
+    pub past: bool,
 }
 
 /// The most events the week list carries.
