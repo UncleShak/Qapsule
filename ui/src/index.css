@@ -230,13 +230,42 @@ button {
   gap: 0;
 }
 
+/* The time sits dead centre (so the opening transform needs no x offset) with the date
+   beside it. */
 .clock-top {
-  display: flex;
+  display: grid;
   flex: none;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
   height: 52px;
+}
+
+.clock-top .widget-time {
+  grid-column: 2;
+  /* It opens as the big, centred clock and settles into place with the capsule. */
+  animation: clock-settle calc(var(--shape-dur) - var(--content-delay)) var(--spring-expand)
+    var(--content-delay) both;
+}
+
+.clock-top .widget-date {
+  grid-column: 3;
+  justify-self: start;
+  margin-left: 10px;
+  animation: grow-in var(--dur-normal) var(--spring-grow) calc(var(--content-delay) + 60ms) both;
+}
+
+@keyframes clock-settle {
+  from {
+    transform: translateY(var(--clock-dy)) scale(var(--clock-scale));
+  }
+}
+
+/* Rule 6: grow toward the final state, never from nothing. */
+@keyframes grow-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+  }
 }
 
 .widget-time {
@@ -253,6 +282,7 @@ button {
 }
 
 .history-divider {
+  animation: fade-in var(--dur-normal) var(--ease-out) calc(var(--content-delay) + 60ms) both;
   flex: none;
   height: 1px;
   margin-bottom: 3px;
@@ -267,6 +297,7 @@ button {
 }
 
 .history-empty {
+  animation: grow-in var(--dur-normal) var(--spring-grow) calc(var(--content-delay) + 90ms) both;
   margin: auto 0;
   font-size: 12px;
   text-align: center;
@@ -274,6 +305,8 @@ button {
 }
 
 .history-row {
+  animation: grow-in var(--dur-normal) var(--spring-grow)
+    calc(var(--content-delay) + 90ms + var(--i, 0) * 30ms) both;
   display: flex;
   flex: none;
   align-items: center;
@@ -1028,6 +1061,18 @@ button {
   }
 
   .bar.music-progress {
+    animation: fade-in 120ms linear both;
+  }
+
+  /* The clock column doesn't move: it cross-fades in with the rest. */
+  .clock-top .widget-time {
+    animation: none;
+  }
+
+  .clock-top .widget-date,
+  .history-divider,
+  .history-empty,
+  .history-row {
     animation: fade-in 120ms linear both;
   }
 
