@@ -94,6 +94,12 @@ export function MusicPeek({ music, clock, open }: { music: MusicView; clock: str
           {music.artist || music.app}
         </span>
       </button>
+      {/* The cover's glow, only in the media view: a static blurred copy that fades in. */}
+      {open && music.art && (
+        <span className="music-glow" aria-hidden="true">
+          <img src={music.art} alt="" draggable={false} />
+        </span>
+      )}
       <button
         type="button"
         className="music-cover"

@@ -26,6 +26,8 @@ export interface MusicView {
   artist: string;
   /** A URL on the `qapsule-art` scheme. */
   art: string | null;
+  /** The cover's dominant colour as `#rrggbb`, for the colour wash; null when there is none. */
+  art_tint: string | null;
   playing: boolean;
   /** As of this snapshot; the UI animates from here. */
   position_ms: number | null;

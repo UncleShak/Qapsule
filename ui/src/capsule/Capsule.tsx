@@ -1,7 +1,15 @@
 // The capsule: peek, pop and undo states drawn from the core's UiState.
 // It holds no state of its own beyond what animation needs.
 
-import { type CSSProperties, type ReactNode, type TransitionEvent, useEffect, useRef, useState } from "react";
+import {
+  type AnimationEvent,
+  type CSSProperties,
+  type ReactNode,
+  type TransitionEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { dismissPop, expandClick, press, setHitRects, swapPeek, undo } from "../bridge";
 import type { ItemView, PeekItem, PopView, UiState } from "../types";
 import { Arch, Shape } from "./Shape";
@@ -23,6 +31,30 @@ function kindOf(state: UiState): LayoutKind {
   }
   if (state.peek.kind === "dual") return "dual";
   return "idle";
+}
+
+/** The tint of the cover when the music holds the peek's main shape (the full pill, the ¾
+ *  or the media view); null under a pop, the undo bar or the expanded view, with the music
+ *  as the ¼, or when the core sent none. */
+function washTint(state: UiState): string | null {
+  if (state.expanded || state.pop || state.undo || state.peek.kind === "idle") return null;
+  const main = state.peek.main;
+  return main.kind === "music" ? main.art_tint : null;
+}
+
+/** The wash layers to draw. A new tint stacks over the old one and fades in over 400 ms
+ *  (a CSS animation); once it has finished, `done` drops the old layer. No timers. */
+function useWash(tint: string | null): [string[], () => void] {
+  const [wash, setWash] = useState<{ tint: string | null; layers: string[] }>({
+    tint,
+    layers: tint ? [tint] : [],
+  });
+  if (wash.tint !== tint) {
+    // Derived during render: no tint, or reduced motion, is instant; else keep one old layer.
+    const layers = !tint ? [] : reducedMotion() ? [tint] : [...wash.layers.slice(-1), tint];
+    setWash({ tint, layers });
+  }
+  return [wash.layers, () => setWash((w) => (w.layers.length > 1 ? { ...w, layers: w.layers.slice(-1) } : w))];
 }
 
 const isMusic = (k: LayoutKind) => k === "music" || k === "music_hover";
@@ -74,6 +106,7 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
     };
   }, []);
   const tucked = !state.shown || !entered;
+  const [washLayers, washDone] = useWash(washTint(state));
   // The window is narrower on a narrow monitor and Rust may resize it at any time; the
   // layout follows its width. A resize event, not a timer.
   const [width, setWidth] = useState(windowWidth);
@@ -159,6 +192,18 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
           <Shape box={l.side} />
           <Arch x={l.archX} />
           <Shape box={l.main} />
+          {/* The album wash: clear copies of the main shape, stacked over the solid fill. */}
+          {washLayers.map((tint) => (
+            <div
+              key={tint}
+              className="wash-layer"
+              style={{ "--art-tint": tint } as CSSProperties}
+              onAnimationEnd={(e: AnimationEvent) => e.target === e.currentTarget && washDone()}
+            >
+              <Shape box={l.main} wash />
+              {l.dual && <Arch x={l.archX} wash pill={l.main} />}
+            </div>
+          ))}
         </div>
         <Content state={state} rest={base} now={l} />
       </div>
