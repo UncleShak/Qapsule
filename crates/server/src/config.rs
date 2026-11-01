@@ -4,7 +4,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use qapsule_core::{Settings, VisibilityMode};
+use qapsule_core::{AccentSource, Settings, VisibilityMode};
+use serde::{Deserialize, Serialize};
 use toml_edit::{DocumentMut, Item, Table, value};
 
 pub fn config_path() -> Option<PathBuf> {
@@ -44,33 +45,127 @@ pub fn reload(path: &Path) -> Result<(Settings, Vec<String>), String> {
 
 /// Saves the visibility mode, keeping the rest of the file and its comments.
 pub fn save_visibility(path: &Path, mode: VisibilityMode) -> io::Result<()> {
-    edit(path, "general", "visibility", value(mode.as_str()))
+    edit(path, vec![("general", "visibility", value(mode.as_str()))])
 }
 
 /// Saves Do Not Disturb, keeping the rest of the file and its comments.
 pub fn save_do_not_disturb(path: &Path, on: bool) -> io::Result<()> {
-    edit(path, "notifications", "do_not_disturb", value(on))
+    edit(path, vec![("notifications", "do_not_disturb", value(on))])
 }
 
-fn edit(path: &Path, section: &str, key: &str, new: Item) -> io::Result<()> {
+/// The four `[appearance]` settings, as the settings window shows them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Appearance {
+    pub accent_source: AccentSource,
+    pub custom_accent: String,
+    pub wallpaper_tint: bool,
+    pub music_tint: bool,
+}
+
+impl Appearance {
+    pub fn of(settings: &Settings) -> Self {
+        Self {
+            accent_source: settings.accent_source,
+            custom_accent: settings.custom_accent.clone(),
+            wallpaper_tint: settings.wallpaper_tint,
+            music_tint: settings.music_tint,
+        }
+    }
+}
+
+/// A change to some of the `[appearance]` settings; fields left out stay as they are.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct AppearancePatch {
+    pub accent_source: Option<AccentSource>,
+    pub custom_accent: Option<String>,
+    pub wallpaper_tint: Option<bool>,
+    pub music_tint: Option<bool>,
+}
+
+impl AppearancePatch {
+    /// Checks the patch. `normalise` turns colour text into the form that is stored
+    /// (or `None` if it isn't a colour); the app passes the colour parser, which
+    /// lives in a crate that depends on this one.
+    pub fn validated(mut self, normalise: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
+        if let Some(text) = &self.custom_accent {
+            self.custom_accent = Some(
+                normalise(text).ok_or_else(|| "that isn't a colour like #60CDFF".to_string())?,
+            );
+        }
+        Ok(self)
+    }
+
+    pub fn apply(&self, settings: &mut Settings) {
+        if let Some(source) = self.accent_source {
+            settings.accent_source = source;
+        }
+        if let Some(colour) = &self.custom_accent {
+            settings.custom_accent = colour.clone();
+        }
+        if let Some(on) = self.wallpaper_tint {
+            settings.wallpaper_tint = on;
+        }
+        if let Some(on) = self.music_tint {
+            settings.music_tint = on;
+        }
+    }
+
+    /// This patch with `newer` laid on top: the newer value of each field wins.
+    pub fn then(mut self, newer: &AppearancePatch) -> Self {
+        self.accent_source = newer.accent_source.or(self.accent_source);
+        self.custom_accent = newer.custom_accent.clone().or(self.custom_accent);
+        self.wallpaper_tint = newer.wallpaper_tint.or(self.wallpaper_tint);
+        self.music_tint = newer.music_tint.or(self.music_tint);
+        self
+    }
+}
+
+/// Saves the `[appearance]` fields the patch sets, keeping the rest of the file.
+pub fn save_appearance(path: &Path, patch: &AppearancePatch) -> io::Result<()> {
+    let mut edits = Vec::new();
+    if let Some(source) = patch.accent_source {
+        let text = match source {
+            AccentSource::Wallpaper => "wallpaper",
+            AccentSource::Windows => "windows",
+            AccentSource::Custom => "custom",
+        };
+        edits.push(("appearance", "accent_source", value(text)));
+    }
+    if let Some(colour) = &patch.custom_accent {
+        edits.push(("appearance", "custom_accent", value(colour.as_str())));
+    }
+    if let Some(on) = patch.wallpaper_tint {
+        edits.push(("appearance", "wallpaper_tint", value(on)));
+    }
+    if let Some(on) = patch.music_tint {
+        edits.push(("appearance", "music_tint", value(on)));
+    }
+    if edits.is_empty() {
+        return Ok(());
+    }
+    edit(path, edits)
+}
+
+fn edit(path: &Path, edits: Vec<(&str, &str, Item)>) -> io::Result<()> {
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(e),
     };
     let mut doc: DocumentMut = text.parse().map_err(io::Error::other)?;
-    if !doc.get(section).is_some_and(Item::is_table) {
-        doc[section] = Item::Table(Table::new());
+    for (section, key, mut new) in edits {
+        if !doc.get(section).is_some_and(Item::is_table) {
+            doc[section] = Item::Table(Table::new());
+        }
+        // Keep a trailing comment on the value being replaced.
+        if let (Some(old), Some(new)) = (
+            doc[section].get(key).and_then(Item::as_value),
+            new.as_value_mut(),
+        ) {
+            *new.decor_mut() = old.decor().clone();
+        }
+        doc[section][key] = new;
     }
-    let mut new = new;
-    // Keep a trailing comment on the value being replaced.
-    if let (Some(old), Some(new)) = (
-        doc[section].get(key).and_then(Item::as_value),
-        new.as_value_mut(),
-    ) {
-        *new.decor_mut() = old.decor().clone();
-    }
-    doc[section][key] = new;
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
@@ -87,17 +182,20 @@ fn edit(path: &Path, section: &str, key: &str, new: Item) -> io::Result<()> {
 
 /// A tray change that could not be saved because the file is invalid. The latest
 /// value of each wins; it is applied on top of the next good reload.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Pending {
     pub visibility: Option<VisibilityMode>,
     pub do_not_disturb: Option<bool>,
+    pub appearance: Option<AppearancePatch>,
 }
 
-/// A change made from the tray.
-#[derive(Debug, Clone, Copy)]
+/// A change made from the tray or the settings window.
+#[derive(Debug, Clone)]
 pub enum Change {
     Visibility(VisibilityMode),
     DoNotDisturb(bool),
+    /// Already validated.
+    Appearance(AppearancePatch),
 }
 
 /// The live settings plus unsaved tray edits. The app keeps this behind one lock
@@ -133,6 +231,7 @@ impl Live {
         match change {
             Change::Visibility(mode) => self.settings.visibility = mode,
             Change::DoNotDisturb(on) => self.settings.do_not_disturb = on,
+            Change::Appearance(ref patch) => patch.apply(&mut self.settings),
         }
         apply(&self.settings);
         let Some(path) = path else { return };
@@ -152,6 +251,19 @@ impl Live {
                     Err(_) => {
                         save_failed("Do Not Disturb");
                         Some(on)
+                    }
+                };
+            }
+            Change::Appearance(patch) => {
+                let all = match self.pending.appearance.take() {
+                    Some(older) => older.then(&patch),
+                    None => patch,
+                };
+                self.pending.appearance = match save_appearance(path, &all) {
+                    Ok(()) => None,
+                    Err(_) => {
+                        save_failed("the appearance settings");
+                        Some(all)
                     }
                 };
             }
@@ -180,6 +292,13 @@ impl Live {
                 self.pending.do_not_disturb = None;
             } else {
                 save_failed("Do Not Disturb");
+            }
+        }
+        if let Some(patch) = self.pending.appearance.take() {
+            patch.apply(&mut new);
+            if path.is_some_and(|p| save_appearance(p, &patch).is_err()) {
+                save_failed("the appearance settings");
+                self.pending.appearance = Some(patch);
             }
         }
         if self.settings == new {
@@ -252,6 +371,121 @@ visibility = \"always\"
         assert!(!settings.do_not_disturb);
         assert_eq!(settings.visibility, VisibilityMode::Always);
         assert!(!settings.pop_setting("calendar:events").pop);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn fake_normalise(text: &str) -> Option<String> {
+        let digits = text.trim().strip_prefix('#')?;
+        (digits.len() == 6 && digits.bytes().all(|b| b.is_ascii_hexdigit()))
+            .then(|| format!("#{}", digits.to_ascii_lowercase()))
+    }
+
+    #[test]
+    fn a_bad_colour_is_rejected_and_a_good_one_is_normalised() {
+        let bad = AppearancePatch {
+            custom_accent: Some("nope".into()),
+            ..Default::default()
+        };
+        assert!(bad.validated(fake_normalise).is_err());
+        let good = AppearancePatch {
+            custom_accent: Some(" #60CDFF ".into()),
+            ..Default::default()
+        };
+        let good = good.validated(fake_normalise).unwrap();
+        assert_eq!(good.custom_accent.as_deref(), Some("#60cdff"));
+    }
+
+    #[test]
+    fn a_partial_update_changes_only_what_it_names() {
+        let mut settings = Settings::default();
+        let before = Appearance::of(&settings);
+        AppearancePatch {
+            music_tint: Some(false),
+            accent_source: Some(AccentSource::Custom),
+            ..Default::default()
+        }
+        .apply(&mut settings);
+        let after = Appearance::of(&settings);
+        assert_eq!(after.accent_source, AccentSource::Custom);
+        assert!(!after.music_tint);
+        assert_eq!(after.custom_accent, before.custom_accent);
+        assert_eq!(after.wallpaper_tint, before.wallpaper_tint);
+
+        let merged = AppearancePatch {
+            music_tint: Some(true),
+            wallpaper_tint: Some(false),
+            ..Default::default()
+        }
+        .then(&AppearancePatch {
+            music_tint: Some(false),
+            ..Default::default()
+        });
+        assert_eq!(merged.music_tint, Some(false));
+        assert_eq!(merged.wallpaper_tint, Some(false));
+        assert_eq!(merged.accent_source, None);
+    }
+
+    #[test]
+    fn saving_appearance_keeps_comments_order_and_other_sections() {
+        let dir = std::env::temp_dir().join(format!("qapsule-config-ap-{}", std::process::id()));
+        let path = dir.join("config.toml");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let original = "# mine
+[general]
+visibility = \"always\" # keep
+
+[appearance]
+accent_source = \"wallpaper\" # where from
+music_tint = true
+unknown = 1
+
+[peek]
+dual_status = false
+";
+        fs::write(&path, original).unwrap();
+        save_appearance(
+            &path,
+            &AppearancePatch {
+                accent_source: Some(AccentSource::Custom),
+                custom_accent: Some("#112233".into()),
+                music_tint: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        for kept in [
+            "# mine",
+            "# keep",
+            "# where from",
+            "unknown = 1",
+            "dual_status = false",
+        ] {
+            assert!(text.contains(kept), "{kept} lost:\n{text}");
+        }
+        assert!(text.find("[general]") < text.find("[appearance]"));
+        assert!(text.find("[appearance]") < text.find("[peek]"));
+        let (settings, warnings) = load(&path);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(settings.accent_source, AccentSource::Custom);
+        assert_eq!(settings.custom_accent, "#112233");
+        assert!(!settings.music_tint && settings.wallpaper_tint);
+        assert_eq!(settings.visibility, VisibilityMode::Always);
+        assert!(!settings.dual_status);
+        assert!(!dir.join("config.toml.tmp").exists());
+
+        // A missing file gets the section.
+        let fresh = dir.join("fresh.toml");
+        save_appearance(
+            &fresh,
+            &AppearancePatch {
+                wallpaper_tint: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(!load(&fresh).0.wallpaper_tint);
         let _ = fs::remove_dir_all(&dir);
     }
 

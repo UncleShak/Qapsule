@@ -5,6 +5,7 @@ mod autostart;
 pub mod identity;
 mod lifecycle;
 mod monitor;
+mod settings_window;
 mod watcher;
 mod window;
 
@@ -306,6 +307,7 @@ fn build_tray(
     }
     let refs: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = items.iter().map(|(_, i)| i as _).collect();
     let visibility = Submenu::with_items(app, "Visibility", true, &refs)?;
+    let settings_item = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Qapsule", true, None::<&str>)?;
     let status = MenuItem::with_id(
         app,
@@ -356,6 +358,7 @@ fn build_tray(
             &dnd,
             &visibility,
             &autostart,
+            &settings_item,
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
@@ -366,6 +369,7 @@ fn build_tray(
         .menu(&menu)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "quit" => app.exit(0),
+            "settings" => settings_window::open(app),
             "do-not-disturb" => {
                 user_change(app, |s| Change::DoNotDisturb(!s.do_not_disturb));
             }
@@ -455,7 +459,9 @@ pub fn run() {
             expand_click,
             media_click,
             close_expanded,
-            set_hit_rects
+            set_hit_rects,
+            settings_window::get_appearance,
+            settings_window::set_appearance
         ])
         .setup(|app| {
             let config_path = config::config_path();

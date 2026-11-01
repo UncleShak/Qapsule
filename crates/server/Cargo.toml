@@ -12,6 +12,7 @@ qapsule-protocol = { path = "../protocol" }
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
 notify = { version = "8", default-features = false }
 toml_edit = "0.25"
+serde = { version = "1", features = ["derive"] }
 
 [dependencies.windows]
 version = "0.62"
