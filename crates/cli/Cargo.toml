@@ -14,13 +14,14 @@ path = "src/main.rs"
 qapsule-protocol = { path = "../protocol" }
 qapsule-secrets = { path = "../secrets" }
 clap = { version = "4", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 
 [dependencies.windows]
 version = "0.62"
 features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Diagnostics_ToolHelp"]
 
 [dev-dependencies]
+tempfile = "3"
 qapsule-core = { path = "../core" }
 qapsule-server = { path = "../server" }
 tokio = { version = "1", features = ["rt-multi-thread"] }
