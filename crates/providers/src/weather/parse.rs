@@ -148,6 +148,7 @@ pub fn parse_forecast(body: &str, place_name: &str) -> Result<WeatherReady, Pars
         temp_c: round(f.current.temperature_2m),
         condition: condition.to_string(),
         glyph: glyph.to_string(),
+        tone: wmo::tone(f.current.weather_code),
         high_c: round(high),
         low_c: round(low),
         hourly,

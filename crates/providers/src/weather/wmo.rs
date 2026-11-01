@@ -1,5 +1,7 @@
 //! WMO weather codes as Open-Meteo reports them.
 
+use qapsule_core::view::WeatherTone;
+
 /// The condition text and glyph name for a WMO code. Unknown codes read as cloudy.
 pub fn describe(code: u32) -> (&'static str, &'static str) {
     match code {
@@ -15,9 +17,36 @@ pub fn describe(code: u32) -> (&'static str, &'static str) {
     }
 }
 
+/// The colour family of a WMO code: clear and partly cloudy are sun; overcast and fog
+/// are cloud; drizzle and rain showers are rain. Unknown codes read as cloud.
+pub fn tone(code: u32) -> WeatherTone {
+    match code {
+        0..=2 => WeatherTone::Sun,
+        51..=57 | 61..=67 | 80..=82 => WeatherTone::Rain,
+        71..=77 | 85..=86 => WeatherTone::Snow,
+        95..=99 => WeatherTone::Storm,
+        _ => WeatherTone::Cloud,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::describe;
+    use super::{WeatherTone, describe, tone};
+
+    #[test]
+    fn every_group_has_a_tone() {
+        assert_eq!(tone(0), WeatherTone::Sun);
+        assert_eq!(tone(2), WeatherTone::Sun);
+        assert_eq!(tone(3), WeatherTone::Cloud);
+        assert_eq!(tone(45), WeatherTone::Cloud);
+        assert_eq!(tone(53), WeatherTone::Rain);
+        assert_eq!(tone(65), WeatherTone::Rain);
+        assert_eq!(tone(82), WeatherTone::Rain);
+        assert_eq!(tone(73), WeatherTone::Snow);
+        assert_eq!(tone(86), WeatherTone::Snow);
+        assert_eq!(tone(96), WeatherTone::Storm);
+        assert_eq!(tone(1000), WeatherTone::Cloud);
+    }
 
     #[test]
     fn maps_every_group() {

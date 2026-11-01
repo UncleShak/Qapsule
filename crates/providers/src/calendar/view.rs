@@ -6,6 +6,7 @@ use qapsule_core::view::{EventDay, EventHead, EventRow, EventsReady, MAX_WEEK_EV
 use rrule::Tz;
 
 use super::parse::{Occurrence, Span};
+use crate::colour::{ColorRules, event_color};
 
 pub const MAX_TITLE: usize = 80;
 pub const MAX_LOCATION: usize = 120;
@@ -28,6 +29,11 @@ pub fn clean(text: &str, max: usize) -> String {
     let mut out: String = trimmed.chars().take(max - 1).collect();
     out.push('…');
     out
+}
+
+/// The bar colour: the config keyword, else the feed's `COLOR`, else a hashed hue.
+fn color_of(occurrence: &Occurrence, colors: &ColorRules) -> String {
+    event_color(&occurrence.title, occurrence.color.as_deref(), colors)
 }
 
 /// The title to show; untitled events get a plain name.
@@ -88,11 +94,11 @@ struct Entry {
     row: EventRow,
 }
 
-fn row(title: String, time: String, past: bool) -> EventRow {
+fn row(title: String, time: String, color: String, past: bool) -> EventRow {
     EventRow {
         title,
         time,
-        color: None,
+        color: Some(color),
         past,
     }
 }
@@ -100,7 +106,13 @@ fn row(title: String, time: String, past: bool) -> EventRow {
 /// The card for `now`: the timed event in progress that began last (or the next
 /// one today), then the rest of the week grouped by day and cut to what fits the
 /// card (see the constants above). All-day events are never "now".
-pub fn build(occurrences: &[Occurrence], now: DateTime<Utc>, tz: Tz, stale: bool) -> EventsReady {
+pub fn build(
+    occurrences: &[Occurrence],
+    now: DateTime<Utc>,
+    tz: Tz,
+    stale: bool,
+    colors: &ColorRules,
+) -> EventsReady {
     let today = now.with_timezone(&tz).date_naive();
     let limit = today + Duration::days(WEEK_DAYS);
 
@@ -157,7 +169,12 @@ pub fn build(occurrences: &[Occurrence], now: DateTime<Utc>, tz: Tz, stale: bool
                     date: local.date_naive(),
                     timed: true,
                     order: local.naive_local(),
-                    row: row(title_of(o), local.format("%H:%M").to_string(), past),
+                    row: row(
+                        title_of(o),
+                        local.format("%H:%M").to_string(),
+                        color_of(o, colors),
+                        past,
+                    ),
                 };
                 if *start > now {
                     if local.date_naive() < limit {
@@ -173,7 +190,7 @@ pub fn build(occurrences: &[Occurrence], now: DateTime<Utc>, tz: Tz, stale: bool
                     date,
                     timed: false,
                     order: date.and_hms_opt(0, 0, 0).unwrap(),
-                    row: row(title_of(o), "All day".into(), false),
+                    row: row(title_of(o), "All day".into(), color_of(o, colors), false),
                 });
             }
             _ => {}
@@ -330,6 +347,7 @@ mod tests {
             uid: title.into(),
             title: title.into(),
             location: None,
+            color: None,
             span: Span::Timed {
                 start: utc(start),
                 end: utc(end),
@@ -343,6 +361,7 @@ mod tests {
             uid: title.into(),
             title: title.into(),
             location: None,
+            color: None,
             span: Span::AllDay {
                 start,
                 end: start + Duration::days(1),
@@ -392,7 +411,13 @@ mod tests {
     fn the_google_export_makes_the_expected_card() {
         let text = include_str!("../../samples/calendar/google-export.ics");
         let occurrences = super::super::parse::parse_calendar(text, JOBURG, utc(NOW)).unwrap();
-        let card = build(&occurrences, utc(NOW), JOBURG, false);
+        let card = build(
+            &occurrences,
+            utc(NOW),
+            JOBURG,
+            false,
+            &ColorRules::default(),
+        );
         let head = card.head.clone().unwrap();
         assert_eq!(head.title, "Daily standup with a folded title");
         assert_eq!(head.caption, "Now · until 11:00");
@@ -416,7 +441,13 @@ mod tests {
             short,
             timed("Over", "2025-03-10 05:00", "2025-03-10 08:00"),
         ];
-        let card = build(&occurrences, utc(NOW), JOBURG, false);
+        let card = build(
+            &occurrences,
+            utc(NOW),
+            JOBURG,
+            false,
+            &ColorRules::default(),
+        );
         let head = card.head.clone().unwrap();
         assert_eq!(head.caption, "Now · until 10:30");
         assert_eq!(head.title, "Short");
@@ -433,7 +464,13 @@ mod tests {
             timed("Soon", "2025-03-10 08:18", "2025-03-10 09:00"),
             timed("Tomorrow", "2025-03-11 06:00", "2025-03-11 07:00"),
         ];
-        let card = build(&occurrences, utc(NOW), JOBURG, false);
+        let card = build(
+            &occurrences,
+            utc(NOW),
+            JOBURG,
+            false,
+            &ColorRules::default(),
+        );
         let head = card.head.clone().unwrap();
         assert_eq!(
             (head.caption.as_str(), head.title.as_str()),
@@ -447,7 +484,13 @@ mod tests {
             ]
         );
         // Nothing left today: no head, and the first day is captioned.
-        let card = build(&occurrences[2..], utc(NOW), JOBURG, false);
+        let card = build(
+            &occurrences[2..],
+            utc(NOW),
+            JOBURG,
+            false,
+            &ColorRules::default(),
+        );
         assert!(card.head.is_none());
         assert_eq!(rows(&card)[0].0, "Tomorrow");
         assert_eq!(in_text(Duration::minutes(125)), "In 2 h 5 min");
@@ -463,7 +506,13 @@ mod tests {
             timed("Late", "2025-03-11 21:30", "2025-03-11 21:45"),
             timed("Early", "2025-03-11 05:30", "2025-03-11 06:00"),
         ];
-        let card = build(&occurrences, utc(NOW), JOBURG, false);
+        let card = build(
+            &occurrences,
+            utc(NOW),
+            JOBURG,
+            false,
+            &ColorRules::default(),
+        );
         assert!(card.head.is_none());
         assert_eq!(
             rows(&card),
@@ -484,7 +533,13 @@ mod tests {
             timed("Next", "2025-03-10 09:00", "2025-03-10 10:00"),
             timed("Yesterday", "2025-03-09 05:00", "2025-03-09 06:00"),
         ];
-        let card = build(&occurrences, utc(NOW), JOBURG, false);
+        let card = build(
+            &occurrences,
+            utc(NOW),
+            JOBURG,
+            false,
+            &ColorRules::default(),
+        );
         assert_eq!(card.days.len(), 1);
         let today = &card.days[0];
         assert_eq!(today.label, None);
@@ -497,9 +552,15 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![("Done", true), ("Next", false)]
         );
-        assert!(today.rows.iter().all(|r| r.color.is_none()));
+        assert!(today.rows.iter().all(|r| r.color.is_some()));
         // With nothing upcoming today, the finished row still gets a day and a line.
-        let card = build(&occurrences[..1], utc(NOW), JOBURG, false);
+        let card = build(
+            &occurrences[..1],
+            utc(NOW),
+            JOBURG,
+            false,
+            &ColorRules::default(),
+        );
         assert!(card.head.is_none());
         assert_eq!(card.days[0].label.as_deref(), Some("Today"));
         assert_eq!(card.days[0].now_line, Some(1));
@@ -515,23 +576,41 @@ mod tests {
                 *end += Duration::hours(3);
             }
         });
-        let card = build(&occurrences, utc(NOW), JOBURG, false);
+        let card = build(
+            &occurrences,
+            utc(NOW),
+            JOBURG,
+            false,
+            &ColorRules::default(),
+        );
         assert_eq!(card.head.as_ref().unwrap().title, "E0");
         assert_eq!(titles(&card), ["E1", "E2", "E3"]);
         assert_eq!(card.more.as_deref(), Some("+4 more today"));
         // Four rows fit exactly when nothing is cut.
-        let card = build(&occurrences[..5], utc(NOW), JOBURG, false);
+        let card = build(
+            &occurrences[..5],
+            utc(NOW),
+            JOBURG,
+            false,
+            &ColorRules::default(),
+        );
         assert_eq!(titles(&card).len(), 4);
         assert_eq!(card.more, None);
         // Stale takes 14 px: one row fewer.
-        let card = build(&occurrences[..5], utc(NOW), JOBURG, true);
+        let card = build(
+            &occurrences[..5],
+            utc(NOW),
+            JOBURG,
+            true,
+            &ColorRules::default(),
+        );
         assert_eq!(titles(&card).len(), 2);
         assert_eq!(card.more.as_deref(), Some("+2 more today"));
 
         // Beyond today it is "+N more".
         let mut later = many("T", "2025-03-12", 6);
         later.push(timed("Now", "2025-03-10 07:00", "2025-03-10 09:00"));
-        let card = build(&later, utc(NOW), JOBURG, false);
+        let card = build(&later, utc(NOW), JOBURG, false, &ColorRules::default());
         assert_eq!(card.days[0].label.as_deref(), Some("Wed 12 Mar"));
         assert_eq!(titles(&card).len(), 2);
         assert_eq!(card.more.as_deref(), Some("+4 more"));
@@ -551,7 +630,7 @@ mod tests {
             past,
             all_day("Long", "2025-03-10"),
         ];
-        let card = build(&occurrences, utc(NOW), JOBURG, true);
+        let card = build(&occurrences, utc(NOW), JOBURG, true, &ColorRules::default());
         assert!(card.head.is_none() && card.stale);
         assert_eq!(
             rows(&card),
@@ -572,7 +651,13 @@ mod tests {
             all_day("Out all day", "2025-03-17"),
             all_day("In all day", "2025-03-16"),
         ];
-        let card = build(&occurrences, utc(NOW), JOBURG, false);
+        let card = build(
+            &occurrences,
+            utc(NOW),
+            JOBURG,
+            false,
+            &ColorRules::default(),
+        );
         assert_eq!(
             rows(&card),
             vec![
@@ -591,7 +676,13 @@ mod tests {
             all_day("Day", "2025-03-11"),
         ];
         assert_eq!(
-            titles(&build(&occurrences, utc(NOW), JOBURG, false)),
+            titles(&build(
+                &occurrences,
+                utc(NOW),
+                JOBURG,
+                false,
+                &ColorRules::default()
+            )),
             ["Day", "Early", "A", "B"]
         );
     }
@@ -601,7 +692,13 @@ mod tests {
         let occurrences: Vec<_> = (0..MAX_WEEK_EVENTS + 20)
             .map(|i| timed(&format!("E{i}"), "2025-03-12 06:00", "2025-03-12 07:00"))
             .collect();
-        let card = build(&occurrences, utc(NOW), JOBURG, false);
+        let card = build(
+            &occurrences,
+            utc(NOW),
+            JOBURG,
+            false,
+            &ColorRules::default(),
+        );
         let shown: usize = card.days.iter().map(|d| d.rows.len()).sum();
         let more: usize = card.more.unwrap()[1..]
             .split(' ')
@@ -631,6 +728,32 @@ mod tests {
         assert_eq!(
             next_midnight(utc("2025-03-10 22:00"), JOBURG),
             utc("2025-03-11 22:00")
+        );
+    }
+
+    #[test]
+    fn rows_take_config_then_feed_then_hashed_colours() {
+        let mut feed = timed("Feed", "2025-03-10 10:00", "2025-03-10 11:00");
+        feed.color = Some("#ff8800".into());
+        let configured = timed("COS 214 lecture", "2025-03-10 12:00", "2025-03-10 13:00");
+        let plain = timed("Gym", "2025-03-10 14:00", "2025-03-10 15:00");
+        let rules = ColorRules::new(&[("cos 214".to_string(), "#7AA2F7".to_string())]);
+        let card = build(
+            &[feed, configured, plain.clone()],
+            utc(NOW),
+            JOBURG,
+            false,
+            &rules,
+        );
+        let color = |title: &str| {
+            let mut rows = card.days.iter().flat_map(|d| d.rows.iter());
+            rows.find(|r| r.title == title)
+                .and_then(|r| r.color.clone())
+        };
+        assert_eq!(color("COS 214 lecture").as_deref(), Some("#7aa2f7"));
+        assert_eq!(
+            color("Gym").unwrap(),
+            event_color(&plain.title, None, &rules)
         );
     }
 }

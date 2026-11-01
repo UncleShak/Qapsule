@@ -103,11 +103,14 @@ export interface HourView {
   glyph: string;
 }
 
+export type WeatherTone = "sun" | "cloud" | "rain" | "snow" | "storm";
+
 export interface WeatherReady {
   city: string;
   temp_c: number;
   condition: string;
   glyph: string;
+  tone: WeatherTone;
   high_c: number;
   low_c: number;
   hourly: HourView[];

@@ -296,6 +296,11 @@ button {
   }
 }
 
+.clock-colon {
+  opacity: 0.7;
+  color: var(--accent);
+}
+
 .widget-time {
   font-family: var(--font-display);
   font-size: 48px;
@@ -373,7 +378,50 @@ button {
 }
 
 .widget-weather {
+  position: relative;
+  isolation: isolate;
   gap: 10px;
+  --wx: var(--wx-cloud);
+}
+
+.widget-weather.tone-sun {
+  --wx: var(--wx-sun);
+}
+.widget-weather.tone-cloud {
+  --wx: var(--wx-cloud);
+}
+.widget-weather.tone-rain {
+  --wx: var(--wx-rain);
+}
+.widget-weather.tone-snow {
+  --wx: var(--wx-snow);
+}
+.widget-weather.tone-storm {
+  --wx: var(--warning);
+}
+
+/* A faint, static radial wash in the condition colour. */
+.widget-weather.tone-sun::before,
+.widget-weather.tone-cloud::before,
+.widget-weather.tone-rain::before,
+.widget-weather.tone-snow::before,
+.widget-weather.tone-storm::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 70% 80% at 20% 30%,
+    color-mix(in srgb, var(--wx) calc(var(--wx-wash-opacity) * 100%), transparent),
+    transparent
+  );
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .widget-weather::before {
+    display: none;
+  }
 }
 
 .weather-now {
@@ -385,6 +433,7 @@ button {
 .weather-glyph {
   flex: none;
   font-size: 40px;
+  color: var(--wx);
 }
 
 .glyph-warning {
@@ -446,6 +495,27 @@ button {
   font-family: var(--font-display);
   font-size: 15px;
   font-weight: 600;
+}
+
+.hour:first-child .hour-temp {
+  color: var(--accent);
+}
+
+.sparkline {
+  display: block;
+  flex: none;
+  width: 100%;
+  height: 14px;
+  overflow: visible;
+}
+
+.sparkline polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
 
 .widget-events {
@@ -540,7 +610,7 @@ button {
   flex: none;
   width: 3px;
   border-radius: 2px;
-  background: var(--event-default);
+  background: var(--event-color, var(--event-default));
 }
 
 .event-name {

@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use qapsule_core::{Effect, PresenceEffect, Settings, UiState, VisibilityMode};
 use qapsule_providers::calendar::{Calendar, CalendarConfig};
+use qapsule_providers::colour::ColorRules;
 use qapsule_providers::media::{ArtStore, Media, SCHEME as ART_SCHEME};
 use qapsule_providers::notifications::{Notifications, Status};
 use qapsule_providers::weather::Weather;
@@ -247,6 +248,7 @@ fn calendar_config(settings: &Settings) -> CalendarConfig {
     CalendarConfig {
         minutes_before: settings.calendar_minutes_before,
         pops: settings.pop_setting("calendar:events").pop,
+        colors: ColorRules::new(&settings.calendar_colors),
     }
 }
 

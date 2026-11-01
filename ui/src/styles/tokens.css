@@ -31,6 +31,13 @@
   /* Semantic */
   --warning: #fce100; /* weather lightning only */
 
+  /* Weather condition colours (icon + faint wash) */
+  --wx-sun: #ffb547;
+  --wx-rain: #6fb6ff;
+  --wx-cloud: var(--text-2);
+  --wx-snow: #ffffff;
+  --wx-wash-opacity: 0.06;
+
   /* Type */
   --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   --font-text: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;

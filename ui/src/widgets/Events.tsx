@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, type CSSProperties } from "react";
 import type { EventsReady, EventsView } from "../types";
 
 export function Events({ events }: { events: EventsView }) {
@@ -57,7 +57,7 @@ function Ready({ events }: { events: EventsReady }) {
                   <li className={event.past ? "event-row past" : "event-row"}>
                     <span
                       className="event-bar"
-                      style={event.color ? { background: event.color } : undefined}
+                      style={event.color ? ({ "--event-color": event.color } as CSSProperties) : undefined}
                     />
                     <span className="event-name">{event.title}</span>
                     <span className="event-time">{event.time}</span>

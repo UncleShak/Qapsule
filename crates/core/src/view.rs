@@ -67,11 +67,24 @@ pub struct WeatherReady {
     pub temp_c: i32,
     pub condition: String,
     pub glyph: String,
+    /// What colour the condition takes in the UI.
+    pub tone: WeatherTone,
     pub high_c: i32,
     pub low_c: i32,
     pub hourly: Vec<HourView>,
     /// The last refresh failed; this is older data.
     pub stale: bool,
+}
+
+/// The condition colour family; the UI maps it to a `--wx-*` token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WeatherTone {
+    Sun,
+    Cloud,
+    Rain,
+    Snow,
+    Storm,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

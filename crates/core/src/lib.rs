@@ -26,7 +26,8 @@ pub use store::{Entry, Key, Store};
 pub use timing::{Coalescer, RateLimiter};
 pub use view::{
     ActionView, EventDay, EventHead, EventRow, EventsReady, EventsView, ExpandedView, HistoryView,
-    HourView, ItemView, MusicView, Peek, PeekItem, PopView, UiState, WeatherReady, WeatherView,
+    HourView, ItemView, MusicView, Peek, PeekItem, PopView, UiState, WeatherReady, WeatherTone,
+    WeatherView,
 };
 
 /// Identifies one pipe connection.

@@ -302,6 +302,9 @@ pub struct Settings {
     pub screens: Vec<Screen>,
     /// How long before an event its pop shows.
     pub calendar_minutes_before: u32,
+    /// `[calendar.colors]`: keyword in an event title → colour text, in file order.
+    /// Not checked here; the calendar provider ignores colours it can't read.
+    pub calendar_colors: Vec<(String, String)>,
 }
 
 impl Default for Settings {
@@ -315,6 +318,7 @@ impl Default for Settings {
             hotkey: Some(Hotkey::DEFAULT),
             screens: default_screens(),
             calendar_minutes_before: 10,
+            calendar_colors: Vec::new(),
         }
     }
 }
@@ -452,6 +456,21 @@ impl Settings {
                     &mut warnings,
                 );
                 settings.notifications.insert(name.clone(), setting);
+            }
+        }
+        if let Some(colors) = section(&table, "calendar", &mut warnings)
+            .and_then(|calendar| section(calendar, "colors", &mut warnings))
+        {
+            for (keyword, value) in colors {
+                match value.as_str() {
+                    Some(text) if !keyword.trim().is_empty() => settings
+                        .calendar_colors
+                        .push((keyword.trim().to_string(), text.trim().to_string())),
+                    Some(_) => {}
+                    None => warnings.push(format!(
+                        "calendar.colors.\"{keyword}\" must be text like \"#7AA2F7\", not {value}"
+                    )),
+                }
             }
         }
         if let Some(value) = table.get("screens") {

@@ -1614,6 +1614,7 @@ fn weather_ready() -> WeatherView {
         temp_c: 24,
         condition: "Sunny".into(),
         glyph: "sun".into(),
+        tone: WeatherTone::Sun,
         high_c: 28,
         low_c: 14,
         hourly: vec![HourView {
@@ -2810,4 +2811,24 @@ fn a_tint_change_alone_is_a_visible_change() {
         panic!()
     };
     assert_eq!(music(main).art_tint.as_deref(), Some("#0a28c8"));
+}
+
+#[test]
+fn calendar_colors_are_read_in_file_order() {
+    let (settings, warnings) = Settings::from_toml(
+        "[calendar.colors]
+\"COS 214\" = \"#7AA2F7\"
+\"WTW 285\" = \"tomato\"
+bad = 3
+",
+    );
+    assert_eq!(
+        settings.calendar_colors,
+        vec![
+            ("COS 214".to_string(), "#7AA2F7".to_string()),
+            ("WTW 285".to_string(), "tomato".to_string())
+        ]
+    );
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(Settings::default().calendar_colors.is_empty());
 }

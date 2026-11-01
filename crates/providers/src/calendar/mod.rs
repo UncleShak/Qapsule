@@ -24,6 +24,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
+use crate::colour::ColorRules;
 pub use parse::{MAX_OCCURRENCES, Occurrence, ParseError, Span, parse_calendar};
 
 /// Data older than this is fetched again when the main screen opens; with pops
@@ -33,12 +34,14 @@ const REFRESH: Duration = Duration::from_secs(5 * 60);
 const SOURCE: &str = "calendar:events";
 
 /// What the app's settings say about the calendar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CalendarConfig {
     /// How long before an event it pops.
     pub minutes_before: u32,
     /// Whether events pop at all (and so whether the calendar refreshes in the background).
     pub pops: bool,
+    /// `[calendar.colors]`: keyword in a title → colour.
+    pub colors: ColorRules,
 }
 
 /// Why a fetch failed. Holds no URL, so it is safe to log.
@@ -160,9 +163,10 @@ fn spawn<F: Fetcher, L: LinkSource>(
     runner: Runner,
 ) -> (Calendar, JoinHandle<()>) {
     let (tx, mut rx) = mpsc::unbounded_channel();
+    let pops = config.pops;
     let mut state = Provider::new(fetcher, links, config, out, clock, tz, runner);
     let task = tokio::spawn(async move {
-        if config.pops {
+        if pops {
             state.tick().await;
         }
         loop {
@@ -252,9 +256,12 @@ impl<F: Fetcher, L: LinkSource> Provider<F, L> {
     /// New settings. Turning pops on starts the background refresh.
     async fn set_config(&mut self, config: CalendarConfig) {
         let was = self.config.pops;
+        let recolour = self.config.colors != config.colors;
         self.config = config;
-        if config.pops && !was {
+        if self.config.pops && !was {
             self.tick().await;
+        } else if recolour && self.visible && self.data.is_some() {
+            self.send_view((self.clock)());
         }
     }
 
@@ -356,7 +363,13 @@ impl<F: Fetcher, L: LinkSource> Provider<F, L> {
             return EventsView::NoLink;
         }
         match &self.data {
-            Some(data) => EventsView::Ready(view::build(data, now, self.tz, self.failed)),
+            Some(data) => EventsView::Ready(view::build(
+                data,
+                now,
+                self.tz,
+                self.failed,
+                &self.config.colors,
+            )),
             None if self.failed => EventsView::Unavailable,
             None => EventsView::Loading,
         }
@@ -555,6 +568,7 @@ mod tests {
             CalendarConfig {
                 minutes_before: 10,
                 pops,
+                colors: ColorRules::default(),
             },
             out,
             clock,
@@ -734,6 +748,7 @@ mod tests {
         h.calendar.set_config(CalendarConfig {
             minutes_before: 15,
             pops: true,
+            colors: ColorRules::default(),
         });
         settle().await;
         assert_eq!(h.fetches(), 1);
@@ -750,6 +765,7 @@ mod tests {
         h.calendar.set_config(CalendarConfig {
             minutes_before: 15,
             pops: false,
+            colors: ColorRules::default(),
         });
         settle().await;
         let fetches = h.fetches();

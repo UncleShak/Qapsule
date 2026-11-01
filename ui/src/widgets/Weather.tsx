@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Glyph } from "../capsule/Glyph";
 import type { WeatherView } from "../types";
 
@@ -5,7 +6,10 @@ const degrees = (t: number) => `${t}°`;
 
 export function Weather({ weather }: { weather: WeatherView }) {
   return (
-    <section className="widget widget-weather" aria-label="Weather">
+    <section
+      className={`widget widget-weather ${weather.kind === "ready" ? `tone-${weather.tone}` : ""}`}
+      aria-label="Weather"
+    >
       <Body weather={weather} />
     </section>
   );
@@ -46,8 +50,39 @@ function Body({ weather }: { weather: WeatherView }) {
               </li>
             ))}
           </ol>
+          <Sparkline temps={weather.hourly.slice(0, 5).map((h) => h.temp_c)} />
           {weather.stale && <span className="widget-caption stale">Updated a while ago</span>}
         </>
       );
   }
+}
+
+const SPARK = { w: 100, h: 14, pad: 2 };
+
+/** A static polyline of the hourly temperatures; it only redraws when the data changes. */
+function Sparkline({ temps }: { temps: number[] }) {
+  const points = useMemo(() => {
+    if (temps.length < 2) return "";
+    const lo = Math.min(...temps);
+    const span = Math.max(...temps) - lo || 1;
+    const inner = SPARK.h - SPARK.pad * 2;
+    return temps
+      .map((t, i) => {
+        const x = (i / (temps.length - 1)) * SPARK.w;
+        const y = SPARK.pad + inner - ((t - lo) / span) * inner;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
+  }, [temps.join(",")]);
+  if (!points) return null;
+  return (
+    <svg
+      className="sparkline"
+      viewBox={`0 0 ${SPARK.w} ${SPARK.h}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <polyline points={points} />
+    </svg>
+  );
 }
