@@ -100,6 +100,38 @@ button {
   filter: var(--cap-shadow);
 }
 
+/* The capsule tint: two copies of the shape in the fill group, drawn solid and faded as a
+   group (so overlapping pieces can't show seams), which mixes the colour into --cap-bg at
+   --tint-strength. Only opacity animates; the layers change nothing about size or layout. */
+.tint-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-palette) linear;
+}
+
+.tint-layer.on {
+  opacity: var(--tint-strength);
+}
+
+.tint-layer .piece {
+  background: var(--music-tint);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tint-layer {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .tint-layer {
+    display: none;
+  }
+}
+
 .piece {
   position: absolute;
   top: 0;

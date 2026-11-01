@@ -67,6 +67,30 @@ function useGlow(tint: string | null): [string[], () => void] {
   return [glow.layers, () => setGlow((g) => (g.layers.length > 1 ? { ...g, layers: g.layers.slice(-1) } : g))];
 }
 
+/** Two stacked tint layers. A new colour goes on the hidden layer, which then becomes the
+ *  visible one (CSS fades them against each other); no colour fades the visible one out and
+ *  leaves its colour in place so it fades as itself. Derived during render: no timers. */
+interface Tints {
+  colours: [string | null, string | null];
+  active: 0 | 1 | null;
+}
+
+function useTintLayers(tint: string | null): Tints {
+  const [tints, setTints] = useState<Tints>({ colours: [tint, null], active: tint ? 0 : null });
+  const current = tints.active === null ? null : tints.colours[tints.active];
+  if (current !== tint) {
+    if (tint === null) {
+      setTints({ colours: tints.colours, active: null });
+    } else {
+      const next = tints.active === 0 ? 1 : 0;
+      const colours: [string | null, string | null] = [...tints.colours];
+      colours[next] = tint;
+      setTints({ colours, active: next });
+    }
+  }
+  return tints;
+}
+
 /** The pill the plain glow fits: the lone pill, or the ¾ of a dual. */
 function plainGlowBox(state: UiState): Box {
   return state.peek.kind === "dual" ? layout("dual").main : layout("music").main;
@@ -145,6 +169,8 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   }, []);
   const tucked = !state.shown || !entered;
   const [glowLayers, glowDone] = useGlow(glowTint(state));
+  // Part 4 feeds the wallpaper tint into the same layers: `state.music_tint ?? wallpaperTint`.
+  const tints = useTintLayers(state.music_tint);
   // The window is narrower on a narrow monitor and Rust may resize it at any time; the
   // layout follows its width. A resize event, not a timer.
   const [width, setWidth] = useState(windowWidth);
@@ -230,6 +256,17 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
           <Shape box={l.side} />
           <Arch x={l.archX} />
           <Shape box={l.main} />
+          {tints.colours.map((colour, i) => (
+            <div
+              key={i}
+              className={`tint-layer ${tints.active === i ? "on" : ""}`}
+              style={colour ? ({ "--music-tint": colour } as CSSProperties) : undefined}
+            >
+              <Shape box={l.side} />
+              <Arch x={l.archX} />
+              <Shape box={l.main} />
+            </div>
+          ))}
           {/* The album colour glow (DESIGN.md section 3): one static element per form, in the
               fill group (so the bars and the clock, in the content layer, never repaint it). */}
           {glowLayers.map((tint) => (

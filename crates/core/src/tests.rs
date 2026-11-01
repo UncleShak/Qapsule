@@ -2832,3 +2832,141 @@ bad = 3
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert!(Settings::default().calendar_colors.is_empty());
 }
+
+// The capsule's music tint.
+
+const ART: &str = "http://qapsule-art.localhost/x";
+
+fn playing_tint(tint: [u8; 3], playing: bool, now: Instant) -> MediaState {
+    MediaState {
+        playing,
+        ..tinted(Some(ART), Some(tint), now)
+    }
+}
+
+fn capsule_tint(core: &Core, now: Instant) -> Option<String> {
+    core.snapshot(now).music_tint
+}
+
+#[test]
+fn playing_music_tints_the_capsule() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    assert_eq!(capsule_tint(&core, clock.now()), None);
+    core.take_update(clock.now());
+    assert_eq!(core.next_deadline(), None, "no music, no wakeup");
+    core.set_media(
+        Some(playing_tint([200, 40, 9], true, clock.now())),
+        clock.now(),
+    );
+    assert_eq!(capsule_tint(&core, clock.now()).as_deref(), Some("#c82809"));
+    assert!(
+        core.take_update(clock.advance(300))
+            .is_some_and(|u| u.music_tint.is_some())
+    );
+    assert_eq!(core.next_deadline(), None, "playing owes no wakeup");
+}
+
+#[test]
+fn a_pause_keeps_the_tint_for_ten_seconds() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(
+        Some(playing_tint([200, 40, 9], true, clock.now())),
+        clock.now(),
+    );
+    core.take_update(clock.advance(300));
+    let paused_at = clock.now();
+    core.set_media(
+        Some(playing_tint([200, 40, 9], false, clock.now())),
+        clock.now(),
+    );
+    assert_eq!(capsule_tint(&core, clock.now()).as_deref(), Some("#c82809"));
+    let due = paused_at + Duration::from_secs(10);
+    core.take_update(clock.advance(300));
+    assert_eq!(core.next_deadline(), Some(due), "the linger is the wake");
+
+    core.tick(clock.advance(9_000));
+    assert_eq!(capsule_tint(&core, clock.now()).as_deref(), Some("#c82809"));
+    core.tick(due);
+    assert_eq!(capsule_tint(&core, due), None);
+    assert!(core.take_update(due + Duration::from_millis(300)).is_some());
+    assert_eq!(core.next_deadline(), None);
+}
+
+#[test]
+fn stopping_lingers_too_and_resuming_keeps_the_tint() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(
+        Some(playing_tint([1, 2, 3], true, clock.now())),
+        clock.now(),
+    );
+    core.set_media(None, clock.advance(100));
+    assert_eq!(capsule_tint(&core, clock.now()).as_deref(), Some("#010203"));
+    core.tick(clock.advance(5_000));
+    core.set_media(
+        Some(playing_tint([1, 2, 3], true, clock.now())),
+        clock.now(),
+    );
+    core.tick(clock.advance(20_000));
+    assert_eq!(
+        capsule_tint(&core, clock.now()).as_deref(),
+        Some("#010203"),
+        "playing again: no countdown"
+    );
+}
+
+#[test]
+fn a_new_track_switches_the_tint_and_no_tint_means_none() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(
+        Some(playing_tint([200, 40, 9], true, clock.now())),
+        clock.now(),
+    );
+    core.set_media(
+        Some(playing_tint([10, 40, 200], true, clock.now())),
+        clock.advance(100),
+    );
+    assert_eq!(capsule_tint(&core, clock.now()).as_deref(), Some("#0a28c8"));
+    core.set_media(
+        Some(tinted(Some(ART), None, clock.now())),
+        clock.advance(100),
+    );
+    assert_eq!(capsule_tint(&core, clock.now()), None);
+}
+
+#[test]
+fn the_music_tint_setting_turns_it_off() {
+    let mut clock = Clock::new();
+    let (settings, warnings) = Settings::from_toml("[appearance]\nmusic_tint = false\n");
+    assert!(warnings.is_empty() && !settings.music_tint);
+    assert!(Settings::default().music_tint);
+    let mut core = Core::new(settings, clock.now());
+    core.set_media(
+        Some(playing_tint([200, 40, 9], true, clock.now())),
+        clock.now(),
+    );
+    assert_eq!(capsule_tint(&core, clock.now()), None);
+    core.set_media(
+        Some(playing_tint([200, 40, 9], false, clock.now())),
+        clock.advance(100),
+    );
+    assert_eq!(capsule_tint(&core, clock.now()), None);
+
+    // Turning it off while tinted clears it at once.
+    let mut on = Core::new(Settings::default(), clock.now());
+    on.set_media(
+        Some(playing_tint([200, 40, 9], true, clock.now())),
+        clock.now(),
+    );
+    on.set_settings(
+        Settings {
+            music_tint: false,
+            ..Settings::default()
+        },
+        clock.now(),
+    );
+    assert_eq!(capsule_tint(&on, clock.now()), None);
+}

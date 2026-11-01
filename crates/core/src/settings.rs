@@ -292,6 +292,8 @@ impl std::fmt::Display for Hotkey {
 pub struct Settings {
     pub visibility: VisibilityMode,
     pub dual_status: bool,
+    /// `[appearance] music_tint`: tint the capsule with the album art while music plays.
+    pub music_tint: bool,
     pub do_not_disturb: bool,
     /// Keyed by source name (`claude-code`) or category (`agents`, `commands`).
     pub notifications: HashMap<String, PopSetting>,
@@ -312,6 +314,7 @@ impl Default for Settings {
         Self {
             visibility: VisibilityMode::Auto,
             dual_status: true,
+            music_tint: true,
             do_not_disturb: false,
             notifications: HashMap::new(),
             expand_on: ExpandOn::Click,
@@ -415,6 +418,15 @@ impl Settings {
                 "peek.dual_status",
                 "dual_status",
                 &mut settings.dual_status,
+                &mut warnings,
+            );
+        }
+        if let Some(appearance) = section(&table, "appearance", &mut warnings) {
+            read_bool(
+                appearance,
+                "appearance.music_tint",
+                "music_tint",
+                &mut settings.music_tint,
                 &mut warnings,
             );
         }

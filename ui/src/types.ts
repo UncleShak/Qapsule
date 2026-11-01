@@ -73,6 +73,8 @@ export interface UiState {
   undo: boolean;
   expanded: ExpandedView | null;
   focus: boolean;
+  /** The capsule's music tint as #rrggbb, or null. */
+  music_tint: string | null;
 }
 
 export interface ExpandedView {

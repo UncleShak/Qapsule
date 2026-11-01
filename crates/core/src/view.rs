@@ -21,6 +21,8 @@ pub struct UiState {
     pub expanded: Option<ExpandedView>,
     /// The window should hold keyboard focus (the hotkey opened the view).
     pub focus: bool,
+    /// The capsule's tint from the album art as `#rrggbb`, while music plays and for 10 s after.
+    pub music_tint: Option<String>,
 }
 
 /// The main screen of the expanded view.

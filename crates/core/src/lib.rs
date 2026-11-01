@@ -141,6 +141,8 @@ pub struct Core {
     media: Option<MediaState>,
     /// The music state the UI was last told about, to judge whether a new report is news.
     media_shown: Option<MediaState>,
+    /// The capsule's music tint as `#rrggbb`, and when it lapses if playback has stopped.
+    music_tint: Option<(String, Option<Instant>)>,
     /// The media view (decision 0010) is open: the 400 x 56 song form replaces the peek.
     media_open: bool,
     /// When an open media view closes because the pointer left it.
@@ -171,6 +173,7 @@ impl Core {
             events: EventsView::Loading,
             media: None,
             media_shown: None,
+            music_tint: None,
             media_open: false,
             media_close_at: None,
             pointer_over: false,
@@ -609,6 +612,7 @@ impl Core {
         let dnd_ended = self.settings.do_not_disturb && !settings.do_not_disturb;
         let city_changed = self.settings.weather_city() != settings.weather_city();
         self.settings = settings;
+        self.refresh_music_tint(now);
         if city_changed {
             self.weather = expanded::initial_weather(self.settings.weather_city());
         }
@@ -656,6 +660,7 @@ impl Core {
             self.undo = None;
             changed = true;
         }
+        changed |= self.refresh_music_tint(now);
         if self.media_close_at.is_some_and(|at| at <= now) {
             self.close_media_view(now);
             changed = true;
@@ -686,6 +691,7 @@ impl Core {
                 .filter(|_| !self.expanded.is_open()),
             self.hover_until,
             self.media_close_at,
+            self.music_tint.as_ref().and_then(|(_, until)| *until),
             self.coalescer.due(),
             self.presence.next_deadline(),
         ]
@@ -756,6 +762,7 @@ impl Core {
                 history: self.history.iter().map(|h| h.view.clone()).collect(),
             }),
             focus: self.expanded.is_pinned(),
+            music_tint: self.music_tint.as_ref().map(|(c, _)| c.clone()),
         }
     }
 
