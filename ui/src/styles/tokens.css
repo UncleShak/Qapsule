@@ -5,7 +5,7 @@
   --cap-solid: rgb(14, 14, 18); /* the same colour, for pieces drawn inside a 0.94 group */
   --cap-opacity: 0.94;
   /* Capsule tints (DESIGN.md section 2): colours set at runtime, transparent until then. */
-  --tint: transparent; /* from the wallpaper (Part 4) */
+  --tint: transparent; /* from the wallpaper (the theme provider) */
   --music-tint: transparent; /* from the album art while music plays */
   --tint-strength: 0.05; /* how much of the tint shows over --cap-bg */
   --dur-palette: 600ms; /* a tint change cross-fades over this, linearly */
@@ -30,6 +30,7 @@
 
   /* Accent: the Windows default dark-mode accent until Rust supplies the user's own */
   --accent: #60cdff;
+  --accent-2: var(--accent); /* the wallpaper's second colour; hairline details only */
   --selection: color-mix(in srgb, var(--accent) 14%, transparent);
   --selection-strong: color-mix(in srgb, var(--accent) 18%, transparent);
 

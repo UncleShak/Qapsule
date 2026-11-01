@@ -37,6 +37,27 @@ impl VisibilityMode {
     }
 }
 
+/// Where the accent colour comes from (`[appearance] accent_source`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccentSource {
+    #[default]
+    Wallpaper,
+    Windows,
+    Custom,
+}
+
+impl AccentSource {
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "wallpaper" => Some(AccentSource::Wallpaper),
+            "windows" => Some(AccentSource::Windows),
+            "custom" => Some(AccentSource::Custom),
+            _ => None,
+        }
+    }
+}
+
 /// What opens the expanded view from the peek.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -294,6 +315,13 @@ pub struct Settings {
     pub dual_status: bool,
     /// `[appearance] music_tint`: tint the capsule with the album art while music plays.
     pub music_tint: bool,
+    /// `[appearance] accent_source`: wallpaper, the Windows accent, or `custom_accent`.
+    pub accent_source: AccentSource,
+    /// `[appearance] custom_accent`: a CSS colour. Not checked here; the theme provider
+    /// falls back to the Windows accent for one it can't read.
+    pub custom_accent: String,
+    /// `[appearance] wallpaper_tint`: tint the capsule with the wallpaper's second colour.
+    pub wallpaper_tint: bool,
     pub do_not_disturb: bool,
     /// Keyed by source name (`claude-code`) or category (`agents`, `commands`).
     pub notifications: HashMap<String, PopSetting>,
@@ -315,6 +343,9 @@ impl Default for Settings {
             visibility: VisibilityMode::Auto,
             dual_status: true,
             music_tint: true,
+            accent_source: AccentSource::Wallpaper,
+            custom_accent: "#60CDFF".to_string(),
+            wallpaper_tint: true,
             do_not_disturb: false,
             notifications: HashMap::new(),
             expand_on: ExpandOn::Click,
@@ -429,6 +460,29 @@ impl Settings {
                 &mut settings.music_tint,
                 &mut warnings,
             );
+            read_bool(
+                appearance,
+                "appearance.wallpaper_tint",
+                "wallpaper_tint",
+                &mut settings.wallpaper_tint,
+                &mut warnings,
+            );
+            if let Some(value) = appearance.get("accent_source") {
+                match value.as_str().and_then(AccentSource::parse) {
+                    Some(source) => settings.accent_source = source,
+                    None => warnings.push(format!(
+                        "appearance.accent_source must be \"wallpaper\", \"windows\" or \"custom\", not {value}"
+                    )),
+                }
+            }
+            if let Some(value) = appearance.get("custom_accent") {
+                match value.as_str() {
+                    Some(text) => settings.custom_accent = text.to_string(),
+                    None => warnings.push(format!(
+                        "appearance.custom_accent must be text like \"#60CDFF\", not {value}"
+                    )),
+                }
+            }
         }
         if let Some(notifications) = section(&table, "notifications", &mut warnings) {
             for (name, value) in notifications {

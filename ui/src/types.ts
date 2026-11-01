@@ -75,6 +75,17 @@ export interface UiState {
   focus: boolean;
   /** The capsule's music tint as #rrggbb, or null. */
   music_tint: string | null;
+  /** The theme provider's colours, or null to keep the built-in ones. */
+  palette: Palette | null;
+}
+
+/** Colours from Rust, all #rrggbb. The accents are already safe to read on the capsule. */
+export interface Palette {
+  accent: string;
+  accent_2: string;
+  /** The wallpaper's second colour at low chroma; null when the tint is off. */
+  tint: string | null;
+  source: "wallpaper" | "wallpaper_engine" | "capture" | "windows" | "custom";
 }
 
 export interface ExpandedView {

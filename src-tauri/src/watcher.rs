@@ -25,8 +25,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetMessageW, GetWindowRect, HWND_TOPMOST, IDC_ARROW, IsZoomed, KillTimer, LWA_ALPHA,
     LoadCursorW, MA_NOACTIVATE, MSG, PostMessageW, RegisterClassW, SWP_HIDEWINDOW, SWP_NOACTIVATE,
     SWP_SHOWWINDOW, SetLayeredWindowAttributes, SetTimer, SetWindowPos, TranslateMessage, WM_APP,
-    WM_DISPLAYCHANGE, WM_DPICHANGED, WM_HOTKEY, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_TIMER,
-    WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    WM_DISPLAYCHANGE, WM_DPICHANGED, WM_HOTKEY, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_SETTINGCHANGE,
+    WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_POPUP,
 };
 use windows::core::w;
 
@@ -45,6 +46,8 @@ const FULLSCREEN_RECHECK_ID: usize = 1;
 const FULLSCREEN_RECHECK_MS: u32 = 500;
 /// From WinUser.h; the `windows` crate only exposes it with the Controls feature.
 const WM_MOUSELEAVE: u32 = 0x02A3;
+/// The `wParam` of `WM_SETTINGCHANGE` when the desktop wallpaper changed (`SPI_SETDESKWALLPAPER`).
+const SPI_SETDESKWALLPAPER: usize = 0x0014;
 /// The strip's size in logical pixels.
 const STRIP_WIDTH: f64 = 120.0;
 const STRIP_HEIGHT: f64 = 3.0;
@@ -156,6 +159,7 @@ struct Context {
     engine: Engine,
     on_hotkey: Box<dyn Fn(HotkeyStatus) + Send + Sync>,
     on_display_change: Box<dyn Fn() + Send + Sync>,
+    on_wallpaper_change: Box<dyn Fn() + Send + Sync>,
 }
 
 static CONTEXT: OnceLock<Context> = OnceLock::new();
@@ -178,12 +182,14 @@ pub fn spawn(
     hotkey: Option<Hotkey>,
     on_hotkey: impl Fn(HotkeyStatus) + Send + Sync + 'static,
     on_display_change: impl Fn() + Send + Sync + 'static,
+    on_wallpaper_change: impl Fn() + Send + Sync + 'static,
 ) {
     *WANTED_HOTKEY.lock().unwrap() = hotkey;
     let context = Context {
         engine,
         on_hotkey: Box::new(on_hotkey),
         on_display_change: Box::new(on_display_change),
+        on_wallpaper_change: Box::new(on_wallpaper_change),
     };
     if CONTEXT.set(context).is_err() {
         return;
@@ -307,6 +313,9 @@ unsafe extern "system" fn window_proc(
                     let _ = KillTimer(Some(hwnd), FULLSCREEN_RECHECK_ID);
                 }
                 context.engine.fullscreen(foreground_is_fullscreen());
+            }
+            WM_SETTINGCHANGE if wparam.0 == SPI_SETDESKWALLPAPER => {
+                (context.on_wallpaper_change)();
             }
             WM_DISPLAYCHANGE | WM_DPICHANGED => {
                 (context.on_display_change)();

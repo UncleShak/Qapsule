@@ -23,6 +23,31 @@ pub struct UiState {
     pub focus: bool,
     /// The capsule's tint from the album art as `#rrggbb`, while music plays and for 10 s after.
     pub music_tint: Option<String>,
+    /// The theme provider's colours; `None` leaves the UI's built-in ones.
+    pub palette: Option<PaletteView>,
+}
+
+/// Where the palette came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PaletteSource {
+    Wallpaper,
+    WallpaperEngine,
+    Capture,
+    Windows,
+    Custom,
+}
+
+/// The colours the UI wears, as `#rrggbb`. Every accent is already safe to read on the
+/// capsule (decision: the UI never computes colours).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PaletteView {
+    pub accent: String,
+    pub accent_2: String,
+    /// The wallpaper's second colour at low chroma. The core drops it when
+    /// `wallpaper_tint` is off.
+    pub tint: Option<String>,
+    pub source: PaletteSource,
 }
 
 /// The main screen of the expanded view.

@@ -169,8 +169,8 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   }, []);
   const tucked = !state.shown || !entered;
   const [glowLayers, glowDone] = useGlow(glowTint(state));
-  // Part 4 feeds the wallpaper tint into the same layers: `state.music_tint ?? wallpaperTint`.
-  const tints = useTintLayers(state.music_tint);
+  // Music replaces the wallpaper tint while it plays; both cross-fade through the same layers.
+  const tints = useTintLayers(state.music_tint ?? state.palette?.tint ?? null);
   // The window is narrower on a narrow monitor and Rust may resize it at any time; the
   // layout follows its width. A resize event, not a timer.
   const [width, setWidth] = useState(windowWidth);

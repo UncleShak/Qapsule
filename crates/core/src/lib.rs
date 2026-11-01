@@ -20,14 +20,14 @@ use qapsule_protocol::{
 
 pub use media::{MediaState, Timeline};
 pub use presence::{Presence, PresenceEffect};
+pub use settings::{AccentSource, PopSetting, Settings, VisibilityMode};
 pub use settings::{ExpandOn, Hotkey, HotkeyKey, Screen, WidgetConfig, WidgetKind, WidgetSize};
-pub use settings::{PopSetting, Settings, VisibilityMode};
 pub use store::{Entry, Key, Store};
 pub use timing::{Coalescer, RateLimiter};
 pub use view::{
     ActionView, EventDay, EventHead, EventRow, EventsReady, EventsView, ExpandedView, HistoryView,
-    HourView, ItemView, MusicView, Peek, PeekItem, PopView, UiState, WeatherReady, WeatherTone,
-    WeatherView,
+    HourView, ItemView, MusicView, PaletteSource, PaletteView, Peek, PeekItem, PopView, UiState,
+    WeatherReady, WeatherTone, WeatherView,
 };
 
 /// Identifies one pipe connection.
@@ -143,6 +143,8 @@ pub struct Core {
     media_shown: Option<MediaState>,
     /// The capsule's music tint as `#rrggbb`, and when it lapses if playback has stopped.
     music_tint: Option<(String, Option<Instant>)>,
+    /// What the theme provider last said: the colours the UI wears.
+    palette: Option<PaletteView>,
     /// The media view (decision 0010) is open: the 400 x 56 song form replaces the peek.
     media_open: bool,
     /// When an open media view closes because the pointer left it.
@@ -174,6 +176,7 @@ impl Core {
             media: None,
             media_shown: None,
             music_tint: None,
+            palette: None,
             media_open: false,
             media_close_at: None,
             pointer_over: false,
@@ -763,6 +766,21 @@ impl Core {
             }),
             focus: self.expanded.is_pinned(),
             music_tint: self.music_tint.as_ref().map(|(c, _)| c.clone()),
+            palette: self.palette.clone().map(|mut p| {
+                if !self.settings.wallpaper_tint {
+                    p.tint = None;
+                }
+                p
+            }),
+        }
+    }
+
+    /// The theme provider has new colours (or none: the UI wears its defaults). Only a
+    /// change is news.
+    pub fn set_palette(&mut self, palette: Option<PaletteView>, now: Instant) {
+        if self.palette != palette {
+            self.palette = palette;
+            self.coalescer.mark(now);
         }
     }
 

@@ -2970,3 +2970,75 @@ fn the_music_tint_setting_turns_it_off() {
     );
     assert_eq!(capsule_tint(&on, clock.now()), None);
 }
+
+// The theme provider's palette.
+
+fn wallpaper_palette() -> PaletteView {
+    PaletteView {
+        accent: "#c86432".into(),
+        accent_2: "#3264c8".into(),
+        tint: Some("#5a3c3c".into()),
+        source: PaletteSource::Wallpaper,
+    }
+}
+
+#[test]
+fn the_palette_reaches_the_ui_once_and_only_on_change() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.take_update(clock.now());
+    assert_eq!(core.snapshot(clock.now()).palette, None);
+
+    let now = clock.advance(1000);
+    core.set_palette(Some(wallpaper_palette()), now);
+    let update = core.take_update(now).expect("a new palette is news");
+    assert_eq!(update.palette, Some(wallpaper_palette()));
+
+    // The same palette again changes nothing.
+    let now = clock.advance(1000);
+    core.set_palette(Some(wallpaper_palette()), now);
+    assert!(core.take_update(now).is_none());
+
+    // Losing the palette is news too.
+    let now = clock.advance(1000);
+    core.set_palette(None, now);
+    assert_eq!(core.take_update(now).map(|u| u.palette), Some(None));
+}
+
+#[test]
+fn the_wallpaper_tint_setting_drops_only_the_tint() {
+    let clock = Clock::new();
+    let (settings, warnings) = Settings::from_toml("[appearance]\nwallpaper_tint = false\n");
+    assert!(warnings.is_empty());
+    let mut core = Core::new(settings, clock.now());
+    core.set_palette(Some(wallpaper_palette()), clock.now());
+    let palette = core.snapshot(clock.now()).palette.unwrap();
+    assert_eq!(palette.tint, None);
+    assert_eq!(palette.accent, "#c86432");
+
+    // Turning it back on shows the tint again, without a new palette.
+    core.set_settings(Settings::default(), clock.now());
+    let palette = core.snapshot(clock.now()).palette.unwrap();
+    assert_eq!(palette.tint.as_deref(), Some("#5a3c3c"));
+}
+
+#[test]
+fn the_appearance_settings_are_read() {
+    let defaults = Settings::default();
+    assert_eq!(defaults.accent_source, AccentSource::Wallpaper);
+    assert_eq!(defaults.custom_accent, "#60CDFF");
+    assert!(defaults.wallpaper_tint);
+
+    let (settings, warnings) = Settings::from_toml(
+        "[appearance]\naccent_source = \"custom\"\ncustom_accent = \"#ff8800\"\n",
+    );
+    assert!(warnings.is_empty());
+    assert_eq!(settings.accent_source, AccentSource::Custom);
+    assert_eq!(settings.custom_accent, "#ff8800");
+
+    let (settings, warnings) =
+        Settings::from_toml("[appearance]\naccent_source = \"rainbow\"\ncustom_accent = 5\n");
+    assert_eq!(warnings.len(), 2);
+    assert_eq!(settings.accent_source, AccentSource::Wallpaper);
+    assert_eq!(settings.custom_accent, "#60CDFF");
+}
