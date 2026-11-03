@@ -3,6 +3,7 @@
 //! that depends on time takes `now`, so tests can drive time by hand.
 
 mod expanded;
+pub mod focus;
 mod media;
 pub mod presence;
 pub mod settings;
@@ -18,16 +19,17 @@ use qapsule_protocol::{
     is_reserved_source,
 };
 
+pub use focus::{FocusPhase, FocusView, ModuleChip, StudyStats};
 pub use media::{MediaState, Timeline};
 pub use presence::{Presence, PresenceEffect};
-pub use settings::{AccentSource, PopSetting, Settings, VisibilityMode};
+pub use settings::{AccentSource, Motion, PopSetting, Settings, VisibilityMode};
 pub use settings::{ExpandOn, Hotkey, HotkeyKey, Screen, WidgetConfig, WidgetKind, WidgetSize};
 pub use store::{Entry, Key, Store};
 pub use timing::{Coalescer, RateLimiter};
 pub use view::{
     ActionView, EventDay, EventHead, EventRow, EventsReady, EventsView, ExpandedView, HistoryView,
-    HourView, ItemView, MusicView, PaletteSource, PaletteView, Peek, PeekItem, PopView, UiState,
-    WeatherReady, WeatherTone, WeatherView,
+    HourView, ItemView, MusicView, PaletteSource, PaletteView, Peek, PeekItem, PopView, ScreenName,
+    UiState, WeatherReady, WeatherTone, WeatherView,
 };
 
 /// Identifies one pipe connection.
@@ -111,6 +113,8 @@ struct HistoryEntry {
 enum Candidate<'a> {
     Activity(&'a Entry),
     Music(&'a MediaState),
+    /// The focus timer, while it runs or is paused (decision 0012).
+    Focus,
 }
 
 #[derive(Debug)]
@@ -153,6 +157,8 @@ pub struct Core {
     hover_until: Option<Instant>,
     coalescer: Coalescer,
     presence: Presence,
+    /// The focus timer and the study log (decision 0012).
+    focus: focus::Focus,
 }
 
 impl Core {
@@ -183,6 +189,7 @@ impl Core {
             hover_until: None,
             coalescer: Coalescer::new(UI_UPDATE_INTERVAL),
             presence: Presence::new(),
+            focus: focus::Focus::default(),
         };
         core.coalescer.mark(now);
         core
@@ -336,8 +343,27 @@ impl Core {
         if !pops || self.settings.do_not_disturb || !self.settings.pop_setting(&key.0).pop {
             return;
         }
+        if self.focus.is_running() && state != State::NeedsInput {
+            self.hold_pop(key, activity);
+            return;
+        }
         let until = (state != State::NeedsInput).then_some(now + POP_DURATION);
         self.push_pop(key, activity, until);
+    }
+
+    /// During focus a pop goes straight into the history, where the expanded view lists it,
+    /// instead of popping. Waiting-for-input pops still pop.
+    fn hold_pop(&mut self, key: Key, activity: Activity) {
+        self.pop_seq += 1;
+        let pop = Pop {
+            key,
+            activity,
+            until: None,
+            seq: self.pop_seq,
+            at: self.clock.clone(),
+            shown: true,
+        };
+        self.retire(pop);
     }
 
     /// Shows `activity` as a pop in place of any earlier pop for `key`.
@@ -420,6 +446,13 @@ impl Core {
             .history
             .iter()
             .position(|h| h.view.source == source && h.view.id == id)?;
+        if source == focus::SOURCE {
+            // "Focus session done": pressing it starts another, as the pop's button does.
+            self.history.remove(index);
+            self.focus_reset(now);
+            self.focus_start(now);
+            return None;
+        }
         let action = self.history[index].action.as_ref()?;
         let effect = match &action.kind {
             ActionKind::OpenUrl { url } => Some(Effect::OpenUrl(url.clone())),
@@ -469,6 +502,14 @@ impl Core {
         let key = (source.to_string(), id.to_string());
         if media::is_media_key(&key) {
             return self.press_media(action_id);
+        }
+        if key.0 == focus::SOURCE && action_id == focus::AGAIN {
+            if let Some(pop) = self.take_pop(&key) {
+                self.retire(pop);
+            }
+            self.focus_reset(now);
+            self.focus_start(now);
+            return None;
         }
         let entry = self.store.get(&key);
         let activity = entry
@@ -673,6 +714,12 @@ impl Core {
             changed = true;
         }
         changed |= self.tick_expanded(now);
+        let shown = self.shown();
+        let focus = self.focus.tick(shown, now);
+        if focus.finished {
+            self.focus_finished(now);
+        }
+        changed |= focus.redraw;
         if changed {
             self.coalescer.mark(now);
         }
@@ -699,6 +746,7 @@ impl Core {
             self.presence.next_deadline(),
         ]
         .into_iter()
+        .chain(self.focus.deadlines())
         .chain(self.expanded.deadlines())
         .flatten()
         .min()
@@ -763,6 +811,8 @@ impl Core {
                 weather: self.weather.clone(),
                 events: self.events.clone(),
                 history: self.history.iter().map(|h| h.view.clone()).collect(),
+                screen: self.expanded.screen,
+                focus: self.focus.view(now),
             }),
             focus: self.expanded.is_pinned(),
             music_tint: self.music_tint.as_ref().map(|(c, _)| c.clone()),
@@ -772,6 +822,7 @@ impl Core {
                 }
                 p
             }),
+            motion: self.settings.motion,
         }
     }
 
@@ -795,14 +846,23 @@ impl Core {
             .filter(|(k, _)| !is_reserved_source(&k.0))
             .map(|(k, e)| (k.clone(), Candidate::Activity(e)))
             .collect();
+        // Music, and the focus timer just before it, sit between running activities with
+        // progress and those without.
+        let at = ranked
+            .iter()
+            .position(|(_, c)| matches!(c, Candidate::Activity(e) if store::rank(&e.activity) >= 3))
+            .unwrap_or(ranked.len());
         if let Some(media) = &self.media {
-            let at = ranked
-                .iter()
-                .position(
-                    |(_, c)| matches!(c, Candidate::Activity(e) if store::rank(&e.activity) >= 3),
-                )
-                .unwrap_or(ranked.len());
             ranked.insert(at, (media::media_key(), Candidate::Music(media)));
+        }
+        if self.focus.is_active() {
+            ranked.insert(
+                at,
+                (
+                    (focus::SOURCE.to_string(), focus::ID.to_string()),
+                    Candidate::Focus,
+                ),
+            );
         }
         ranked
     }
@@ -818,6 +878,7 @@ impl Core {
             Candidate::Music(media) => {
                 PeekItem::Music(media::music_view(media, controls, details, now))
             }
+            Candidate::Focus => PeekItem::Activity(self.focus_item(now)),
         };
         // While the media view is open the song replaces the whole peek, dual or not.
         if let (true, Some(media)) = (self.media_open, &self.media) {

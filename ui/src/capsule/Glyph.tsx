@@ -16,6 +16,9 @@ const GLYPHS: Record<string, string> = {
   next: "\uE893", // Next
   play: "\uE768", // Play
   pause: "\uE769", // Pause
+  timer: "\uE916", // Stopwatch
+  restart: "\uE72C", // Refresh
+  chevron_down: "\uE70D", // ChevronDown
   // Weather. Segoe Fluent Icons has no weather set, so these are the closest shapes it has.
   clear: "\uE706", // Brightness
   partly_cloudy: "\uE753", // Cloud

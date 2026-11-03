@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { dismissPop, expandClick, press, setHitRects, swapPeek, undo } from "../bridge";
+import { dismissPop, expandClick, press, setHitRects, setScreen, swapPeek, undo } from "../bridge";
 import type { ItemView, PeekItem, PopView, UiState } from "../types";
 import { Arch, Shape } from "./Shape";
 import { Glyph, stateGlyph } from "./Glyph";
@@ -369,6 +369,7 @@ function Content({ state, rest, now }: { state: UiState; rest: Layout; now: Layo
 }
 
 function caption(item: ItemView): string | null {
+  if (item.caption !== null) return item.caption;
   if (item.progress !== null) return `${Math.round(item.progress * 100)}%`;
   if (item.elapsed_min !== null && item.state === "running") return `${item.elapsed_min} min`;
   return null;
@@ -397,7 +398,15 @@ function Item({ item }: { item: ItemView }) {
     </button>
   ) : (
     // No action of its own: a click opens the expanded view (the core ignores it in hover mode).
-    <button type="button" className="item" onClick={() => expandClick()}>
+    // The focus timer opens it on the Focus screen.
+    <button
+      type="button"
+      className="item"
+      onClick={() => {
+        if (item.source === "focus:") setScreen("focus");
+        expandClick();
+      }}
+    >
       {inner}
     </button>
   );

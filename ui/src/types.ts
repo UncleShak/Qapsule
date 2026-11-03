@@ -15,6 +15,8 @@ export interface ItemView {
   icon: string;
   elapsed_min: number | null;
   primary_action: string | null;
+  /** Replaces the percentage or minutes, like the focus timer's `18:42`. */
+  caption: string | null;
 }
 
 /** The song playing now (decision 0008). Its key is always `media:` / `now-playing`. */
@@ -77,7 +79,11 @@ export interface UiState {
   music_tint: string | null;
   /** The theme provider's colours, or null to keep the built-in ones. */
   palette: Palette | null;
+  /** Qapsule's calm springs, or Bloom's livelier ones (decision 0012). */
+  motion: Motion;
 }
+
+export type Motion = "calm" | "lively";
 
 /** Colours from Rust, all #rrggbb. The accents are already safe to read on the capsule. */
 export interface Palette {
@@ -94,6 +100,58 @@ export interface ExpandedView {
   events: EventsView;
   /** The last notifications that left the screen, newest first. */
   history: HistoryView[];
+  /** The screen showing (decision 0012). */
+  screen: ScreenName;
+  focus: FocusView;
+}
+
+export type ScreenName = "focus" | "main";
+export const SCREENS: { id: ScreenName; label: string }[] = [
+  { id: "focus", label: "Focus" },
+  { id: "main", label: "Today" },
+];
+
+export type FocusPhase = "idle" | "running" | "paused" | "done";
+
+export interface ModuleChip {
+  code: string;
+  color: string;
+}
+
+export interface DayBar {
+  label: string;
+  height: number;
+  today: boolean;
+  time: string;
+}
+
+export interface ModuleRow {
+  code: string;
+  color: string;
+  time: string;
+  share: number;
+}
+
+export interface StudyStats {
+  today: string;
+  week: string;
+  streak: number;
+  sessions_today: number;
+  bars: DayBar[];
+  modules: ModuleRow[];
+}
+
+/** Mirrors `FocusView` in crates/core/src/focus.rs. */
+export interface FocusView {
+  phase: FocusPhase;
+  count_up: boolean;
+  length_min: number;
+  lengths: number[];
+  display: string;
+  caption: string;
+  progress: number;
+  module: ModuleChip | null;
+  stats: StudyStats;
 }
 
 export interface HistoryView {

@@ -34,7 +34,7 @@ pub fn open(app: &AppHandle) {
     tauri::async_runtime::spawn(async move {
         let built = WebviewWindowBuilder::new(&app, LABEL, WebviewUrl::App("settings.html".into()))
             .title("Qapsule settings")
-            .inner_size(420.0, 360.0)
+            .inner_size(420.0, 420.0)
             .resizable(false)
             .maximizable(false)
             .center()

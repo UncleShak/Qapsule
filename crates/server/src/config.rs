@@ -4,13 +4,31 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use qapsule_core::{AccentSource, Settings, VisibilityMode};
+use qapsule_core::{AccentSource, Motion, Settings, VisibilityMode};
 use serde::{Deserialize, Serialize};
 use toml_edit::{DocumentMut, Item, Table, value};
 
 pub fn config_path() -> Option<PathBuf> {
     let appdata = std::env::var_os("APPDATA")?;
     Some(PathBuf::from(appdata).join("Qapsule").join("config.toml"))
+}
+
+/// The study log at `%APPDATA%\Qapsule\study.toml` (decision 0012).
+pub fn study_path() -> Option<PathBuf> {
+    let appdata = std::env::var_os("APPDATA")?;
+    Some(PathBuf::from(appdata).join("Qapsule").join("study.toml"))
+}
+
+/// Saves the study log, writing beside the file and renaming over it.
+pub fn save_study(path: &Path, text: &str) -> io::Result<()> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("toml.tmp");
+    fs::write(&tmp, text)?;
+    fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = fs::remove_file(&tmp);
+    })
 }
 
 /// Reads settings. A missing file means defaults; mistakes come back as warnings.
@@ -53,13 +71,14 @@ pub fn save_do_not_disturb(path: &Path, on: bool) -> io::Result<()> {
     edit(path, vec![("notifications", "do_not_disturb", value(on))])
 }
 
-/// The four `[appearance]` settings, as the settings window shows them.
+/// The `[appearance]` settings, as the settings window shows them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Appearance {
     pub accent_source: AccentSource,
     pub custom_accent: String,
     pub wallpaper_tint: bool,
     pub music_tint: bool,
+    pub motion: Motion,
 }
 
 impl Appearance {
@@ -69,6 +88,7 @@ impl Appearance {
             custom_accent: settings.custom_accent.clone(),
             wallpaper_tint: settings.wallpaper_tint,
             music_tint: settings.music_tint,
+            motion: settings.motion,
         }
     }
 }
@@ -80,6 +100,7 @@ pub struct AppearancePatch {
     pub custom_accent: Option<String>,
     pub wallpaper_tint: Option<bool>,
     pub music_tint: Option<bool>,
+    pub motion: Option<Motion>,
 }
 
 impl AppearancePatch {
@@ -108,6 +129,9 @@ impl AppearancePatch {
         if let Some(on) = self.music_tint {
             settings.music_tint = on;
         }
+        if let Some(motion) = self.motion {
+            settings.motion = motion;
+        }
     }
 
     /// This patch with `newer` laid on top: the newer value of each field wins.
@@ -116,6 +140,7 @@ impl AppearancePatch {
         self.custom_accent = newer.custom_accent.clone().or(self.custom_accent);
         self.wallpaper_tint = newer.wallpaper_tint.or(self.wallpaper_tint);
         self.music_tint = newer.music_tint.or(self.music_tint);
+        self.motion = newer.motion.or(self.motion);
         self
     }
 }
@@ -139,6 +164,9 @@ pub fn save_appearance(path: &Path, patch: &AppearancePatch) -> io::Result<()> {
     }
     if let Some(on) = patch.music_tint {
         edits.push(("appearance", "music_tint", value(on)));
+    }
+    if let Some(motion) = patch.motion {
+        edits.push(("appearance", "motion", value(motion.as_str())));
     }
     if edits.is_empty() {
         return Ok(());

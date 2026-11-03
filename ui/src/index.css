@@ -1279,3 +1279,367 @@ button {
     opacity: 0;
   }
 }
+
+/* Screens of the expanded capsule (decision 0012): the pages sit side by side on a track
+   that slides on the expand spring; pips at the bottom edge show where you are. */
+
+.screens {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.screen-track {
+  display: flex;
+  width: calc(var(--count) * 100%);
+  height: 100%;
+  transform: translateX(calc(var(--at) * -100% / var(--count)));
+  transition: transform var(--dur-slow) var(--spring-expand);
+}
+
+.screen-page {
+  flex: none;
+  width: calc(100% / var(--count));
+  height: 100%;
+}
+
+.pips {
+  position: absolute;
+  left: 50%;
+  bottom: 9px;
+  display: flex;
+  gap: 6px;
+  transform: translateX(-50%);
+}
+
+.pip {
+  width: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--text-4);
+  transition:
+    width var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.pip.on {
+  width: 16px;
+  background: var(--text-1);
+}
+
+/* The Focus screen: the timer, the week and the modules, in the main screen's columns. */
+
+.widget-focus {
+  flex-direction: row;
+  align-items: center;
+  gap: 18px;
+}
+
+.focus-ring {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-content: center;
+  justify-items: center;
+  width: 100px;
+  height: 100px;
+}
+
+.focus-ring svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+
+.focus-ring .ring-track,
+.focus-ring .ring-fill {
+  stroke-width: 5;
+}
+
+.focus-ring .ring-fill {
+  transition: stroke-dashoffset 1s linear;
+}
+
+.focus-ring.phase-paused .ring-fill {
+  stroke: var(--text-3);
+}
+
+.focus-ring.phase-done .ring-fill {
+  stroke: var(--text-2);
+}
+
+.focus-time {
+  position: relative;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.focus-caption {
+  position: relative;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.focus-side {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.module-chip {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 13px;
+  background: var(--fill-subtle);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.module-chip:hover {
+  background: var(--fill-hover-strong);
+}
+
+.module-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.module-code {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.module-chevron {
+  font-size: 8px;
+  color: var(--text-3);
+}
+
+.focus-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.focus-primary,
+.focus-secondary {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 32px;
+  border-radius: var(--r-control);
+  font-size: 13px;
+}
+
+.focus-primary {
+  background: var(--accent);
+  color: var(--cap-solid);
+}
+
+.focus-primary:hover {
+  background: color-mix(in srgb, var(--accent) 88%, white);
+}
+
+.focus-secondary {
+  background: var(--fill-subtle);
+  color: var(--text-2);
+}
+
+.focus-secondary:hover:not(:disabled) {
+  background: var(--fill-hover-strong);
+  color: var(--text-1);
+}
+
+.focus-secondary:disabled {
+  opacity: 0.4;
+}
+
+.focus-status {
+  height: 24px;
+  line-height: 24px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.focus-lengths {
+  display: flex;
+  gap: 2px;
+  height: 24px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--fill-subtle);
+}
+
+.focus-length {
+  min-width: 30px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.focus-length:hover {
+  color: var(--text-1);
+}
+
+.focus-length[aria-checked="true"] {
+  background: var(--fill-hover-strong);
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.widget-week {
+  gap: 8px;
+}
+
+.week-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.week-total {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.week-streak {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--selection-strong);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.week-bars {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  min-height: 0;
+}
+
+.week-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 0;
+}
+
+.week-track {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  max-width: 22px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--fill-subtle);
+}
+
+.week-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: var(--text-3);
+  transform: scaleY(var(--h));
+  transform-origin: 50% 100%;
+  transition: transform var(--dur-slow) var(--spring-grow);
+}
+
+.week-day.today .week-fill {
+  background: var(--accent);
+}
+
+.week-label {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.week-day.today .week-label {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.week-today {
+  flex: none;
+}
+
+.widget-modules {
+  gap: 8px;
+}
+
+.module-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.module-row {
+  display: grid;
+  grid-template-columns: 7px 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  height: 18px;
+  font-size: 12px;
+  animation: grow-in var(--dur-normal) var(--spring-grow) calc(var(--content-delay) + var(--i) * 30ms) both;
+}
+
+.module-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.module-track {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--fill-subtle);
+}
+
+.module-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  transform: scaleX(var(--share));
+  transform-origin: 0 50%;
+  transition: transform var(--dur-slow) var(--spring-grow);
+}
+
+.module-time {
+  color: var(--text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-track,
+  .pip,
+  .week-fill,
+  .module-fill,
+  .focus-ring .ring-fill {
+    transition: none;
+  }
+
+  .module-row {
+    animation: fade-in 120ms linear both;
+  }
+}

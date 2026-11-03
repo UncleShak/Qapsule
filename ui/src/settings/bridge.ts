@@ -4,12 +4,14 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export type AccentSource = "wallpaper" | "windows" | "custom";
+export type Motion = "calm" | "lively";
 
 export interface Appearance {
   accent_source: AccentSource;
   custom_accent: string;
   wallpaper_tint: boolean;
   music_tint: boolean;
+  motion: Motion;
 }
 
 export const getAppearance = () => invoke<Appearance>("get_appearance");

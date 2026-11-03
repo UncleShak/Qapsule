@@ -37,6 +37,34 @@ impl VisibilityMode {
     }
 }
 
+/// How the capsule moves (`[appearance] motion`, decision 0012).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Motion {
+    /// Qapsule's own springs: barely any overshoot.
+    #[default]
+    Calm,
+    /// Bloom's feel: the same timings with a visible bounce.
+    Lively,
+}
+
+impl Motion {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Motion::Calm => "calm",
+            Motion::Lively => "lively",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "calm" => Some(Motion::Calm),
+            "lively" => Some(Motion::Lively),
+            _ => None,
+        }
+    }
+}
+
 /// Where the accent colour comes from (`[appearance] accent_source`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -322,6 +350,8 @@ pub struct Settings {
     pub custom_accent: String,
     /// `[appearance] wallpaper_tint`: tint the capsule with the wallpaper's second colour.
     pub wallpaper_tint: bool,
+    /// `[appearance] motion`: calm or lively springs.
+    pub motion: Motion,
     pub do_not_disturb: bool,
     /// Keyed by source name (`claude-code`) or category (`agents`, `commands`).
     pub notifications: HashMap<String, PopSetting>,
@@ -346,6 +376,7 @@ impl Default for Settings {
             accent_source: AccentSource::Wallpaper,
             custom_accent: "#60CDFF".to_string(),
             wallpaper_tint: true,
+            motion: Motion::Calm,
             do_not_disturb: false,
             notifications: HashMap::new(),
             expand_on: ExpandOn::Click,
@@ -367,6 +398,9 @@ pub fn category(source: &str) -> &'static str {
     }
     if source == crate::media::SOURCE {
         return "music";
+    }
+    if source == crate::focus::SOURCE {
+        return "focus";
     }
     if qapsule_protocol::is_reserved_source(source) {
         return "windows_apps";
@@ -472,6 +506,14 @@ impl Settings {
                     Some(source) => settings.accent_source = source,
                     None => warnings.push(format!(
                         "appearance.accent_source must be \"wallpaper\", \"windows\" or \"custom\", not {value}"
+                    )),
+                }
+            }
+            if let Some(value) = appearance.get("motion") {
+                match value.as_str().and_then(Motion::parse) {
+                    Some(motion) => settings.motion = motion,
+                    None => warnings.push(format!(
+                        "appearance.motion must be \"calm\" or \"lively\", not {value}"
                     )),
                 }
             }

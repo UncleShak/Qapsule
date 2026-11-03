@@ -148,6 +148,12 @@ fn top_level_windows() -> HashMap<u32, HWND> {
 }
 
 /// The local time as `HH:MM`, the date like `Sat 31 Oct`, and how long until the minute changes.
+/// Today's local date as `YYYY-MM-DD`, for the study log.
+pub fn local_day() -> String {
+    let t = unsafe { GetLocalTime() };
+    format!("{:04}-{:02}-{:02}", t.wYear, t.wMonth, t.wDay)
+}
+
 pub fn local_clock() -> (String, String, Duration) {
     const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const MONTHS: [&str; 12] = [

@@ -3,7 +3,8 @@
 use qapsule_protocol::{Action, ActionKind, Activity, Progress, State};
 use serde::Serialize;
 
-use crate::settings::VisibilityMode;
+use crate::focus::FocusView;
+use crate::settings::{Motion, VisibilityMode};
 
 /// A full description of the screen. Sent whole on every update.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -25,6 +26,8 @@ pub struct UiState {
     pub music_tint: Option<String>,
     /// The theme provider's colours; `None` leaves the UI's built-in ones.
     pub palette: Option<PaletteView>,
+    /// `[appearance] motion`: Qapsule's calm springs, or Bloom's livelier ones.
+    pub motion: Motion,
 }
 
 /// Where the palette came from.
@@ -59,6 +62,31 @@ pub struct ExpandedView {
     pub events: EventsView,
     /// The last notifications that left the screen, newest first (decision 0009).
     pub history: Vec<HistoryView>,
+    /// The screen showing: Focus on the left, or the main screen (decision 0012).
+    pub screen: ScreenName,
+    /// The Focus screen's timer and study numbers.
+    pub focus: FocusView,
+}
+
+/// The screens of the expanded view, left to right.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScreenName {
+    Focus,
+    #[default]
+    Main,
+}
+
+impl ScreenName {
+    pub const ALL: [ScreenName; 2] = [ScreenName::Focus, ScreenName::Main];
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "focus" => Some(ScreenName::Focus),
+            "main" => Some(ScreenName::Main),
+            _ => None,
+        }
+    }
 }
 
 /// One notification that has left the screen, as the history lists it.
@@ -232,6 +260,8 @@ pub struct ItemView {
     pub elapsed_min: Option<u64>,
     /// The action clicking the item runs, if any.
     pub primary_action: Option<String>,
+    /// Text that replaces the percentage or minutes, like the focus timer's `18:42`.
+    pub caption: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -265,6 +295,7 @@ pub fn source_label(source: &str) -> String {
         "codex" => "Codex".into(),
         "wrap" => "Command".into(),
         crate::media::SOURCE => "Music".into(),
+        crate::focus::SOURCE => "Focus".into(),
         other if is_calendar(other) => "Calendar".into(),
         other => match other.split_once(':') {
             Some((_, name)) if qapsule_protocol::is_reserved_source(other) => {
@@ -284,6 +315,7 @@ pub fn icon_for(activity: &Activity) -> String {
         "claude-code" | "codex" => "agent",
         "wrap" => "build",
         s if is_calendar(s) => "calendar",
+        crate::focus::SOURCE => "timer",
         s if qapsule_protocol::is_reserved_source(s) => "app",
         _ => "info",
     }
@@ -355,5 +387,6 @@ pub fn item_view(activity: &Activity, elapsed_min: Option<u64>) -> ItemView {
         icon: icon_for(activity),
         elapsed_min,
         primary_action: primary_action(activity).map(|a| a.id.clone()),
+        caption: None,
     }
 }

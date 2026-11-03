@@ -12,7 +12,7 @@ mod window;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use qapsule_core::{Effect, PresenceEffect, Settings, UiState, VisibilityMode};
+use qapsule_core::{Effect, PresenceEffect, ScreenName, Settings, UiState, VisibilityMode};
 use qapsule_providers::calendar::{Calendar, CalendarConfig};
 use qapsule_providers::colour::ColorRules;
 use qapsule_providers::media::{ArtStore, Media, SCHEME as ART_SCHEME};
@@ -167,6 +167,40 @@ fn swap_peek(state: State<'_, AppState>) {
 #[tauri::command]
 fn set_pointer(state: State<'_, AppState>, over: bool) {
     state.engine.pointer(over);
+}
+
+// The Focus screen (decision 0012): presses only; the core decides.
+
+#[tauri::command]
+fn focus_toggle(state: State<'_, AppState>) {
+    state.engine.focus_toggle();
+}
+
+#[tauri::command]
+fn focus_reset(state: State<'_, AppState>) {
+    state.engine.focus_reset();
+}
+
+#[tauri::command]
+fn focus_length(state: State<'_, AppState>, minutes: u32) {
+    state.engine.focus_length(minutes);
+}
+
+#[tauri::command]
+fn focus_module(state: State<'_, AppState>) {
+    state.engine.focus_module();
+}
+
+#[tauri::command]
+fn set_screen(state: State<'_, AppState>, screen: String) {
+    if let Some(screen) = ScreenName::parse(&screen) {
+        state.engine.screen(screen);
+    }
+}
+
+#[tauri::command]
+fn step_screen(state: State<'_, AppState>, delta: i32) {
+    state.engine.step_screen(delta.signum());
 }
 
 /// The UI reports where the capsule is drawn; everything else lets clicks through.
@@ -460,6 +494,12 @@ pub fn run() {
             media_click,
             close_expanded,
             set_hit_rects,
+            focus_toggle,
+            focus_reset,
+            focus_length,
+            focus_module,
+            set_screen,
+            step_screen,
             settings_window::get_appearance,
             settings_window::set_appearance
         ])

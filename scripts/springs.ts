@@ -39,3 +39,23 @@ for (const [name, damping, ms, note] of curves) {
   console.log(`  /* ${note}: damping ${damping}, ${ms}ms */`);
   console.log(`  ${name}: ${linear(damping, ms)};`);
 }
+
+// Lively motion (decision 0012): Bloom's feel. The same timings, so nothing that waits on
+// a transition changes, with a visible bounce. Paste into the :root[data-motion="lively"] block.
+const lively: [string, number, number, string][] = [
+  ["--spring-expand", 0.55, 280, "about 12% overshoot"],
+  ["--spring-pop", 0.55, 240, "about 12% overshoot"],
+  ["--spring-replace", 0.65, 220, "about 7% overshoot"],
+  ["--spring-grow", 0.65, 220, "about 7% overshoot"],
+  ["--spring-hover", 0.35, 300, "about 30% overshoot of a few pixels"],
+  ["--spring-settle", 0.75, 180, "a small bounce back"],
+  ["--spring-collapse", 0.75, 220, "a small bounce back"],
+];
+
+console.log("");
+console.log(":root[data-motion=\"lively\"] {");
+for (const [name, damping, ms, note] of lively) {
+  console.log(`  /* ${note}: damping ${damping}, ${ms}ms */`);
+  console.log(`  ${name}: ${linear(damping, ms)};`);
+}
+console.log("}");

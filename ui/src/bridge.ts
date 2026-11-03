@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { UiState } from "./types";
+import type { ScreenName, UiState } from "./types";
 import type { Rect } from "./capsule/geometry";
 
 /** Calls `apply` with the current state, then with every update. Returns an unsubscribe function. */
@@ -36,3 +36,11 @@ export const expandClick = () => invoke("expand_click");
 export const mediaClick = () => invoke("media_click");
 export const closeExpanded = () => invoke("close_expanded");
 export const setHitRects = (rects: Rect[]) => invoke("set_hit_rects", { rects });
+
+// The Focus screen (decision 0012).
+export const focusToggle = () => invoke("focus_toggle");
+export const focusReset = () => invoke("focus_reset");
+export const focusLength = (minutes: number) => invoke("focus_length", { minutes });
+export const focusModule = () => invoke("focus_module");
+export const setScreen = (screen: ScreenName) => invoke("set_screen", { screen });
+export const stepScreen = (delta: number) => invoke("step_screen", { delta });

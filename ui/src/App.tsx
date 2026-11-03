@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { closeExpanded, dismissPop, pointerSlowed, press, setPointer, subscribe } from "./bridge";
+import { closeExpanded, dismissPop, pointerSlowed, press, setPointer, stepScreen, subscribe } from "./bridge";
 import { Capsule } from "./capsule/Capsule";
 import { usePalette } from "./palette";
 import type { UiState } from "./types";
@@ -10,6 +10,12 @@ function App() {
 
   useEffect(() => subscribe(setState), []);
   usePalette(state?.palette ?? null);
+
+  // Calm or lively springs (decision 0012): tokens.css swaps the curves on this attribute.
+  const motion = state?.motion ?? "calm";
+  useEffect(() => {
+    document.documentElement.dataset.motion = motion;
+  }, [motion]);
 
   const expanded = state?.expanded != null;
   // The core decides when to expand; the UI only reports how the pointer moved.
@@ -56,11 +62,13 @@ function App() {
     };
   }, []);
 
-  // Esc closes the expanded view.
+  // Esc closes the expanded view; the arrow keys move between its screens.
   useEffect(() => {
     if (!expanded) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeExpanded();
+      else if (e.key === "ArrowLeft") stepScreen(-1);
+      else if (e.key === "ArrowRight") stepScreen(1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

@@ -7,7 +7,7 @@ use std::time::Instant;
 use qapsule_protocol::State;
 
 use crate::settings::ExpandOn;
-use crate::view::{EventsView, WeatherView};
+use crate::view::{EventsView, ScreenName, WeatherView};
 use crate::{COLLAPSE_GRACE, Core, EXPAND_DWELL, EXPAND_INTENT_DELAY, POP_DURATION, UNDO_DURATION};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -30,6 +30,8 @@ pub(crate) struct Expanded {
     /// Esc or the hotkey closed the view with the pointer over it: hovering doesn't
     /// open it again until the pointer has left.
     suppressed: bool,
+    /// The screen showing. Kept while the view is closed, so it opens where it was left.
+    pub(crate) screen: ScreenName,
 }
 
 impl Expanded {
@@ -199,6 +201,25 @@ impl Core {
             }
         }
         false
+    }
+
+    /// Shows a screen of the expanded view.
+    pub fn set_screen(&mut self, screen: ScreenName, now: Instant) {
+        if self.expanded.screen != screen {
+            self.expanded.screen = screen;
+            self.coalescer.mark(now);
+        }
+    }
+
+    /// Moves one screen left (`-1`) or right (`1`), stopping at the ends.
+    pub fn step_screen(&mut self, delta: i32, now: Instant) {
+        let all = ScreenName::ALL;
+        let at = all
+            .iter()
+            .position(|s| *s == self.expanded.screen)
+            .unwrap_or(0) as i32;
+        let next = (at + delta).clamp(0, all.len() as i32 - 1) as usize;
+        self.set_screen(all[next], now);
     }
 
     /// Whether the main screen opened or closed since the last call: `Some(open)`

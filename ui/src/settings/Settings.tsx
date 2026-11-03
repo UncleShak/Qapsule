@@ -1,10 +1,15 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { getAppearance, setAppearance, type AccentSource, type Appearance } from "./bridge";
+import { getAppearance, setAppearance, type AccentSource, type Appearance, type Motion } from "./bridge";
 
 const SOURCES: { id: AccentSource; label: string }[] = [
   { id: "wallpaper", label: "Wallpaper" },
   { id: "windows", label: "Windows" },
   { id: "custom", label: "Custom" },
+];
+
+const MOTIONS: { id: Motion; label: string }[] = [
+  { id: "calm", label: "Calm" },
+  { id: "lively", label: "Lively" },
 ];
 
 const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -122,6 +127,25 @@ export default function Settings() {
           )}
         </section>
       )}
+
+      <section className="row">
+        <span className="label" id="motion-label">
+          Motion
+        </span>
+        <div className="segments" role="radiogroup" aria-labelledby="motion-label">
+          {MOTIONS.map(({ id, label }) => (
+            <button
+              key={id}
+              role="radio"
+              aria-checked={values.motion === id}
+              className="segment"
+              onClick={() => void send({ motion: id })}
+            >
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </section>
 
       <Toggle
         label="Tint capsule with wallpaper"

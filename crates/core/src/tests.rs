@@ -3042,3 +3042,267 @@ fn the_appearance_settings_are_read() {
     assert_eq!(settings.accent_source, AccentSource::Wallpaper);
     assert_eq!(settings.custom_accent, "#60CDFF");
 }
+
+// Focus and the study log (decision 0012).
+
+fn focus_core(clock: &Clock) -> Core {
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_day("2026-11-04".into(), clock.now());
+    core
+}
+
+fn focus_view(core: &Core, now: Instant) -> FocusView {
+    let mut core_view = core.snapshot(now);
+    core_view
+        .expanded
+        .take()
+        .map(|e| e.focus)
+        .unwrap_or_else(|| {
+            panic!("the expanded view should be open");
+        })
+}
+
+#[test]
+fn a_countdown_shows_in_the_peek_pops_when_done_and_is_logged() {
+    let mut clock = Clock::new();
+    let mut core = focus_core(&clock);
+    core.focus_start(clock.now());
+    let Peek::One { main } = core.snapshot(clock.now()).peek else {
+        panic!("the timer should be in the peek");
+    };
+    let item = act(main);
+    assert_eq!(item.source, focus::SOURCE);
+    assert_eq!(item.caption.as_deref(), Some("25:00"));
+    assert_eq!(item.state, State::Running);
+
+    let now = clock.advance(60_500);
+    core.tick(now);
+    let Peek::One { main } = core.snapshot(now).peek else {
+        panic!("still in the peek");
+    };
+    assert_eq!(act(main).caption.as_deref(), Some("24:00"));
+
+    let now = clock.advance(24 * 60_000);
+    core.tick(now);
+    let pop = core.snapshot(now).pop.expect("a finished session pops");
+    assert_eq!(pop.source, focus::SOURCE);
+    assert_eq!(pop.subtitle.as_deref(), Some("25 min"));
+    assert!(matches!(core.snapshot(now).peek, Peek::Idle));
+
+    let saved = core.take_study_save().expect("the log changed");
+    assert!(saved.contains("sessions = 1"), "{saved}");
+    assert!(saved.contains("Other = 1500"), "{saved}");
+    assert_eq!(core.take_study_save(), None);
+}
+
+#[test]
+fn start_another_on_the_pop_starts_a_new_session() {
+    let mut clock = Clock::new();
+    let mut core = focus_core(&clock);
+    core.focus_length(15, clock.now());
+    core.focus_start(clock.now());
+    let now = clock.advance(15 * 60_000);
+    core.tick(now);
+    assert!(core.snapshot(now).pop.is_some());
+    assert_eq!(
+        core.press(focus::SOURCE, focus::ID, focus::AGAIN, now),
+        None
+    );
+    let snap = core.snapshot(now);
+    assert!(snap.pop.is_none());
+    assert!(matches!(snap.peek, Peek::One { .. }));
+}
+
+#[test]
+fn pops_wait_in_the_history_during_focus_except_needs_input() {
+    let mut clock = Clock::new();
+    let mut core = focus_core(&clock);
+    core.focus_start(clock.now());
+    upsert(
+        &mut core,
+        activity("wrap", "build", State::Running),
+        clock.now(),
+    );
+    end(&mut core, "wrap", "build", State::Succeeded, clock.now());
+    assert!(
+        core.snapshot(clock.now()).pop.is_none(),
+        "held during focus"
+    );
+    assert_eq!(core.history.len(), 1);
+
+    upsert(
+        &mut core,
+        activity("claude-code", "cc", State::NeedsInput),
+        clock.now(),
+    );
+    let pop = core
+        .snapshot(clock.now())
+        .pop
+        .expect("needs input still pops");
+    assert_eq!(pop.source, "claude-code");
+
+    core.focus_pause(clock.advance(1000));
+    end(
+        &mut core,
+        "claude-code",
+        "cc",
+        State::Succeeded,
+        clock.now(),
+    );
+    assert_eq!(
+        core.snapshot(clock.now()).pop.map(|p| p.state),
+        Some(State::Succeeded),
+        "pops again once focus is paused"
+    );
+}
+
+#[test]
+fn the_module_comes_from_the_class_on_now_unless_picked_by_hand() {
+    let clock = Clock::new();
+    let mut core = focus_core(&clock);
+    let events = |caption: &str, title: &str| {
+        EventsView::Ready(EventsReady {
+            head: Some(EventHead {
+                caption: caption.into(),
+                title: title.into(),
+                location: None,
+            }),
+            days: vec![EventDay {
+                label: None,
+                now_line: None,
+                rows: vec![EventRow {
+                    title: "WTW 285 Tutorial".into(),
+                    time: "16:30".into(),
+                    color: None,
+                    past: false,
+                }],
+            }],
+            more: None,
+            stale: false,
+        })
+    };
+    core.set_events(events("In 8 min", "COS214 Lecture"), clock.now());
+    core.focus_start(clock.now());
+    core.toggle_expanded(clock.now());
+    let chip = focus_view(&core, clock.now())
+        .module
+        .expect("picked from the calendar");
+    assert_eq!(chip.code, "COS 214");
+
+    // The chip cycles through the log, then the calendar, then no module.
+    core.focus_cycle_module(clock.now());
+    assert_eq!(
+        focus_view(&core, clock.now())
+            .module
+            .map(|m| m.code)
+            .as_deref(),
+        Some("WTW 285")
+    );
+    core.focus_cycle_module(clock.now());
+    assert_eq!(focus_view(&core, clock.now()).module, None);
+
+    // A class far off doesn't pick, and a hand-picked module wins for 10 minutes.
+    core.focus_reset(clock.now());
+    core.set_events(events("In 40 min", "PHY 124 Lab"), clock.now());
+    core.focus_start(clock.now());
+    assert_eq!(focus_view(&core, clock.now()).module, None);
+}
+
+#[test]
+fn time_goes_to_the_module_it_was_spent_on_and_counts_up() {
+    let mut clock = Clock::new();
+    let mut core = focus_core(&clock);
+    core.focus_length(0, clock.now());
+    core.focus_start(clock.now());
+    core.toggle_expanded(clock.now());
+    let now = clock.advance(10 * 60_000);
+    core.tick(now);
+    let view = focus_view(&core, now);
+    assert!(view.count_up);
+    assert_eq!(view.display, "10:00");
+    assert_eq!(view.stats.today, "10 min", "live, before it is credited");
+    core.focus_reset(now);
+    let saved = core.take_study_save().expect("credited on reset");
+    assert!(saved.contains("Other = 600"), "{saved}");
+    assert!(
+        saved.contains("sessions = 1"),
+        "5 minutes up counts as a session: {saved}"
+    );
+}
+
+#[test]
+fn the_study_log_loads_back_and_feeds_the_week() {
+    let clock = Clock::new();
+    let mut core = focus_core(&clock);
+    let text = "order = [\"COS 214\", \"WTW 285\"]\n\n[days.2026-11-02]\nsessions = 2\n\n[days.2026-11-02.modules]\n\"COS 214\" = 3000\n\n[days.2026-11-03.modules]\n\"WTW 285\" = 1200\n";
+    core.load_study(text).expect("valid");
+    assert!(core.load_study("not = [valid").is_err());
+    core.toggle_expanded(clock.now());
+    let stats = focus_view(&core, clock.now()).stats;
+    assert_eq!(stats.week, "1 h 10 min");
+    assert_eq!(stats.streak, 2);
+    assert_eq!(stats.bars.len(), 7);
+    assert!(stats.bars[2].today);
+    assert_eq!(stats.bars[0].height, 1.0);
+    assert_eq!(stats.modules[0].code, "COS 214");
+    assert_eq!(stats.modules[0].color, "#60cdff");
+    assert_eq!(stats.modules[1].color, "#c084fc");
+}
+
+#[test]
+fn the_expanded_view_steps_between_screens_and_remembers_the_last() {
+    let clock = Clock::new();
+    let mut core = focus_core(&clock);
+    core.toggle_expanded(clock.now());
+    let screen = |core: &Core| core.snapshot(clock.now()).expanded.map(|e| e.screen);
+    assert_eq!(screen(&core), Some(ScreenName::Main));
+    core.step_screen(-1, clock.now());
+    assert_eq!(screen(&core), Some(ScreenName::Focus));
+    core.step_screen(-1, clock.now());
+    assert_eq!(screen(&core), Some(ScreenName::Focus), "stops at the end");
+    core.close_expanded(clock.now());
+    core.toggle_expanded(clock.now());
+    assert_eq!(screen(&core), Some(ScreenName::Focus));
+    core.set_screen(ScreenName::Main, clock.now());
+    assert_eq!(screen(&core), Some(ScreenName::Main));
+}
+
+#[test]
+fn seconds_are_drawn_only_while_the_capsule_is_shown() {
+    let mut clock = Clock::new();
+    let settings = Settings {
+        visibility: VisibilityMode::OnDemand,
+        ..Default::default()
+    };
+    let mut core = Core::new(settings, clock.now());
+    core.set_day("2026-11-04".into(), clock.now());
+    core.focus_start(clock.now());
+    core.tick(clock.now());
+    core.take_update(clock.now());
+    core.take_presence(clock.now());
+    // Tucked: only the finish and the minute save wake the engine.
+    let next = core.next_deadline().expect("the finish is due");
+    assert!(
+        next >= clock.now() + Duration::from_secs(59),
+        "{:?}",
+        next - clock.now()
+    );
+    core.set_pointer(true, clock.advance(300));
+    core.tick(clock.now());
+    core.take_update(clock.now());
+    core.take_presence(clock.now());
+    let next = core.next_deadline().expect("a second to draw");
+    assert!(next <= clock.now() + Duration::from_secs(1));
+}
+
+#[test]
+fn motion_is_read_from_appearance() {
+    assert_eq!(Settings::default().motion, Motion::Calm);
+    let (settings, warnings) = Settings::from_toml("[appearance]\nmotion = \"lively\"\n");
+    assert!(warnings.is_empty());
+    assert_eq!(settings.motion, Motion::Lively);
+    let (settings, warnings) = Settings::from_toml("[appearance]\nmotion = \"bouncy\"\n");
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(settings.motion, Motion::Calm);
+    assert_eq!(settings::category(focus::SOURCE), "focus");
+}

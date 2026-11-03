@@ -8,13 +8,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use qapsule_core::{
-    ConnId, Core, Effect, EventsView, MediaState, PaletteView, PresenceEffect, Settings, UiState,
-    WeatherView,
+    ConnId, Core, Effect, EventsView, MediaState, PaletteView, PresenceEffect, ScreenName,
+    Settings, UiState, WeatherView,
 };
 use qapsule_protocol::{Activity, ClientMessage, ServerMessage};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::system;
+use crate::{config, system};
 
 /// Where the engine's output goes: the window, and the action router.
 pub trait Shell: Send + 'static {
@@ -86,6 +86,12 @@ enum Command {
     Settings(Settings),
     WebviewGone,
     Snapshot(oneshot::Sender<UiState>),
+    FocusToggle,
+    FocusReset,
+    FocusLength(u32),
+    FocusModule,
+    Screen(ScreenName),
+    StepScreen(i32),
 }
 
 /// A cheap, cloneable handle to the engine task.
@@ -224,6 +230,35 @@ impl Engine {
         self.send(Command::WebviewGone);
     }
 
+    /// The focus timer's play/pause button.
+    pub fn focus_toggle(&self) {
+        self.send(Command::FocusToggle);
+    }
+
+    pub fn focus_reset(&self) {
+        self.send(Command::FocusReset);
+    }
+
+    /// 15, 25 or 50 minutes, or 0 to count up.
+    pub fn focus_length(&self, minutes: u32) {
+        self.send(Command::FocusLength(minutes));
+    }
+
+    /// The module chip was pressed.
+    pub fn focus_module(&self) {
+        self.send(Command::FocusModule);
+    }
+
+    /// Show a screen of the expanded view.
+    pub fn screen(&self, screen: ScreenName) {
+        self.send(Command::Screen(screen));
+    }
+
+    /// One screen left (-1) or right (1).
+    pub fn step_screen(&self, delta: i32) {
+        self.send(Command::StepScreen(delta));
+    }
+
     /// The full UI state, for a UI that has just started.
     pub async fn snapshot(&self) -> Option<UiState> {
         let (tx, rx) = oneshot::channel();
@@ -235,10 +270,21 @@ impl Engine {
 async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell: impl Shell) {
     let mut conns: HashMap<ConnId, mpsc::UnboundedSender<ServerMessage>> = HashMap::new();
     let mut next_minute = Instant::now();
+    // The study log (decision 0012). A file that can't be read leaves an empty log, and the
+    // next save replaces it.
+    let study = config::study_path();
+    if let Some(text) = study
+        .as_deref()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        && let Err(e) = core.load_study(&text)
+    {
+        eprintln!("qapsule: {e}");
+    }
     loop {
         let now = Instant::now();
         if now >= next_minute {
             let (clock, date, until) = system::local_clock();
+            core.set_day(system::local_day(), now);
             core.set_clock(clock, date, now);
             next_minute = now + until;
         }
@@ -256,6 +302,11 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
         }
         if let Some(state) = core.take_update(now) {
             shell.update(state);
+        }
+        if let (Some(text), Some(path)) = (core.take_study_save(), study.as_deref())
+            && let Err(e) = config::save_study(path, &text)
+        {
+            eprintln!("qapsule: couldn't save the study log: {e}");
         }
         let deadline = core
             .next_deadline()
@@ -332,6 +383,12 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
             Command::Snapshot(reply) => {
                 let _ = reply.send(core.snapshot(now));
             }
+            Command::FocusToggle => core.focus_toggle(now),
+            Command::FocusReset => core.focus_reset(now),
+            Command::FocusLength(minutes) => core.focus_length(minutes, now),
+            Command::FocusModule => core.focus_cycle_module(now),
+            Command::Screen(screen) => core.set_screen(screen, now),
+            Command::StepScreen(delta) => core.step_screen(delta, now),
         }
     }
 }
