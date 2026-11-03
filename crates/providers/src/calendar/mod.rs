@@ -24,6 +24,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
+use crate::colour::ColorRules;
 pub use parse::{MAX_OCCURRENCES, Occurrence, ParseError, Span, parse_calendar};
 
 /// Data older than this is fetched again when the main screen opens; with pops
@@ -33,12 +34,14 @@ const REFRESH: Duration = Duration::from_secs(5 * 60);
 const SOURCE: &str = "calendar:events";
 
 /// What the app's settings say about the calendar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CalendarConfig {
     /// How long before an event it pops.
     pub minutes_before: u32,
     /// Whether events pop at all (and so whether the calendar refreshes in the background).
     pub pops: bool,
+    /// `[calendar.colors]`: keyword in a title → colour.
+    pub colors: ColorRules,
 }
 
 /// Why a fetch failed. Holds no URL, so it is safe to log.
@@ -160,9 +163,10 @@ fn spawn<F: Fetcher, L: LinkSource>(
     runner: Runner,
 ) -> (Calendar, JoinHandle<()>) {
     let (tx, mut rx) = mpsc::unbounded_channel();
+    let pops = config.pops;
     let mut state = Provider::new(fetcher, links, config, out, clock, tz, runner);
     let task = tokio::spawn(async move {
-        if config.pops {
+        if pops {
             state.tick().await;
         }
         loop {
@@ -252,9 +256,12 @@ impl<F: Fetcher, L: LinkSource> Provider<F, L> {
     /// New settings. Turning pops on starts the background refresh.
     async fn set_config(&mut self, config: CalendarConfig) {
         let was = self.config.pops;
+        let recolour = self.config.colors != config.colors;
         self.config = config;
-        if config.pops && !was {
+        if self.config.pops && !was {
             self.tick().await;
+        } else if recolour && self.visible && self.data.is_some() {
+            self.send_view((self.clock)());
         }
     }
 
@@ -356,7 +363,13 @@ impl<F: Fetcher, L: LinkSource> Provider<F, L> {
             return EventsView::NoLink;
         }
         match &self.data {
-            Some(data) => EventsView::Ready(view::build(data, now, self.tz, self.failed)),
+            Some(data) => EventsView::Ready(view::build(
+                data,
+                now,
+                self.tz,
+                self.failed,
+                &self.config.colors,
+            )),
             None if self.failed => EventsView::Unavailable,
             None => EventsView::Loading,
         }
@@ -555,6 +568,7 @@ mod tests {
             CalendarConfig {
                 minutes_before: 10,
                 pops,
+                colors: ColorRules::default(),
             },
             out,
             clock,
@@ -669,7 +683,10 @@ mod tests {
         h.calendar.main_screen(true);
         settle().await;
         let first = ready(last_view(&mut h.views));
-        assert!(first.now.is_none() && first.next.len() == 1);
+        assert_eq!(
+            first.head.as_ref().map(|h| h.caption.as_str()),
+            Some("In 10 min")
+        );
         h.calendar.main_screen(false);
         settle().await;
 
@@ -682,7 +699,7 @@ mod tests {
         assert_eq!(views.len(), 2, "the cached view, then the refreshed one");
         let cached = ready(views.first().cloned());
         assert_eq!(
-            cached.now.as_ref().map(|e| e.title.as_str()),
+            cached.head.as_ref().map(|e| e.title.as_str()),
             Some("Review")
         );
         assert!(!cached.stale);
@@ -731,6 +748,7 @@ mod tests {
         h.calendar.set_config(CalendarConfig {
             minutes_before: 15,
             pops: true,
+            colors: ColorRules::default(),
         });
         settle().await;
         assert_eq!(h.fetches(), 1);
@@ -747,6 +765,7 @@ mod tests {
         h.calendar.set_config(CalendarConfig {
             minutes_before: 15,
             pops: false,
+            colors: ColorRules::default(),
         });
         settle().await;
         let fetches = h.fetches();
@@ -836,7 +855,7 @@ mod tests {
         settle().await;
         let card = ready(last_view(&mut h.views));
         assert!(card.stale);
-        assert_eq!(card.next.len(), 1);
+        assert!(card.head.is_some());
 
         // The failure did not reset the clock: the next open tries again.
         *h.fake.fail.lock().unwrap() = None;
@@ -878,24 +897,24 @@ mod tests {
         h.calendar.main_screen(true);
         settle().await;
         let card = ready(last_view(&mut h.views));
-        assert!(card.now.is_none());
+        let head = card.head.unwrap();
         assert_eq!(
-            (card.next[0].day.as_str(), card.next[0].time.as_str()),
-            ("Today", "10:30")
+            (head.caption.as_str(), head.title.as_str()),
+            ("In 30 min", "Standup")
         );
 
         advance(30 * 60).await;
         let card = ready(last_view(&mut h.views));
-        let now = card.now.unwrap();
+        let head = card.head.unwrap();
         assert_eq!(
-            (now.title.as_str(), now.until.as_str()),
-            ("Standup", "11:00")
+            (head.title.as_str(), head.caption.as_str()),
+            ("Standup", "Now · until 11:00")
         );
-        assert!(card.next.is_empty());
+        assert!(card.days.is_empty());
 
         advance(30 * 60).await;
         let card = ready(last_view(&mut h.views));
-        assert!(card.now.is_none());
+        assert!(card.head.is_none());
 
         // Closing it stops the updates.
         h.calendar.main_screen(false);

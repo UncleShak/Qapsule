@@ -8,7 +8,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use qapsule_core::{
-    ConnId, Core, Effect, EventsView, MediaState, PresenceEffect, Settings, UiState, WeatherView,
+    ConnId, Core, Effect, EventsView, MediaState, PaletteView, PresenceEffect, Settings, UiState,
+    WeatherView,
 };
 use qapsule_protocol::{Activity, ClientMessage, ServerMessage};
 use tokio::sync::{mpsc, oneshot};
@@ -79,6 +80,7 @@ enum Command {
     Weather(WeatherView),
     Events(EventsView),
     Media(Option<MediaState>),
+    Palette(Option<PaletteView>),
     EdgeHover,
     Fullscreen(bool),
     Settings(Settings),
@@ -199,6 +201,11 @@ impl Engine {
         self.send(Command::Media(media));
     }
 
+    /// The theme provider has the colours to wear, or none.
+    pub fn set_palette(&self, palette: Option<PaletteView>) {
+        self.send(Command::Palette(palette));
+    }
+
     /// The pointer touched the strip at the top edge where a tucked capsule hides.
     pub fn edge_hover(&self) {
         self.send(Command::EdgeHover);
@@ -313,6 +320,7 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
             Command::Weather(weather) => core.set_weather(weather, now),
             Command::Events(events) => core.set_events(events, now),
             Command::Media(media) => core.set_media(media, now),
+            Command::Palette(palette) => core.set_palette(palette, now),
             Command::EdgeHover => core.reveal_from_edge(now),
             Command::Fullscreen(fullscreen) => core.set_fullscreen(fullscreen, now),
             Command::Settings(settings) => core.set_settings(settings, now),

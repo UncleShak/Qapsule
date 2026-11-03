@@ -9,6 +9,9 @@ use crate::{dismiss_action, fit, focus_action};
 
 pub const CLAUDE_CODE: &str = "claude-code";
 
+/// A subagent that never reports its stop leaves the pill after this long.
+const SUBAGENT_MAX_SECS: u64 = 30 * 60;
+
 /// Maps a Claude Code hook event (its JSON input) to a message, or `None` to ignore it.
 /// `focus_pid` is a process inside the terminal running Claude, usually Claude itself.
 ///
@@ -18,36 +21,58 @@ pub const CLAUDE_CODE: &str = "claude-code";
 /// | `Notification` asking for permission or input | needs input |
 /// | `Stop` | succeeded |
 /// | `StopFailure` | failed |
+/// | `SubagentStart` | running, as its own activity `cc-<session>-<agent_id>` |
+/// | `SubagentStop` | succeeded, same activity |
 /// | `SessionEnd` | removed |
 pub fn claude_code(input: &str, focus_pid: Option<u32>) -> Option<ClientMessage> {
     let event: Value = serde_json::from_str(input).ok()?;
     let field = |name: &str| event.get(name).and_then(Value::as_str);
     let session = field("session_id").filter(|s| !s.is_empty())?;
-    let id: String = format!("cc-{session}")
-        .chars()
-        .map(|c| {
-            if c.is_whitespace() || c.is_control() {
-                '-'
-            } else {
-                c
-            }
-        })
-        .take(MAX_KEY_CHARS)
-        .collect();
+    let sanitise = |raw: String| -> String {
+        raw.chars()
+            .map(|c| {
+                if c.is_whitespace() || c.is_control() {
+                    '-'
+                } else {
+                    c
+                }
+            })
+            .take(MAX_KEY_CHARS)
+            .collect()
+    };
+    let mut id = sanitise(format!("cc-{session}"));
+    let mut expires_in = None;
     let folder = field("cwd")
         .and_then(|cwd| cwd.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next())
         .filter(|f| !f.is_empty());
 
     let (state, title, detail) = match field("hook_event_name")? {
-        "UserPromptSubmit" | "PostToolUse" => (State::Running, "Claude is working", None),
+        "UserPromptSubmit" | "PostToolUse" => (State::Running, "Claude is working".into(), None),
         "Notification" => match field("notification_type") {
-            Some("permission_prompt" | "elicitation_dialog" | "agent_needs_input") => {
-                (State::NeedsInput, "Claude needs you", field("message"))
-            }
+            Some("permission_prompt" | "elicitation_dialog" | "agent_needs_input") => (
+                State::NeedsInput,
+                "Claude needs you".into(),
+                field("message"),
+            ),
             _ => return None,
         },
-        "Stop" => (State::Succeeded, "Claude is done", None),
-        "StopFailure" => (State::Failed, "Claude stopped with an error", None),
+        event @ ("SubagentStart" | "SubagentStop") => {
+            let agent_id = field("agent_id").filter(|s| !s.is_empty())?;
+            id = sanitise(format!("cc-{session}-{agent_id}"));
+            let name = field("agent_type")
+                .filter(|s| !s.is_empty())
+                .unwrap_or("Subagent");
+            if event == "SubagentStart" {
+                // No SessionEnd-time clear can reach these (a clear needs the exact id), so
+                // bound a subagent that never reports its stop.
+                expires_in = Some(SUBAGENT_MAX_SECS);
+                (State::Running, format!("{name} is working"), None)
+            } else {
+                (State::Succeeded, format!("{name} is done"), None)
+            }
+        }
+        "Stop" => (State::Succeeded, "Claude is done".into(), None),
+        "StopFailure" => (State::Failed, "Claude stopped with an error".into(), None),
         "SessionEnd" => {
             return Some(ClientMessage::Clear {
                 source: Some(CLAUDE_CODE.into()),
@@ -74,13 +99,13 @@ pub fn claude_code(input: &str, focus_pid: Option<u32>) -> Option<ClientMessage>
         activity: Activity {
             id,
             source: CLAUDE_CODE.into(),
-            title: title.into(),
+            title,
             subtitle,
             state,
             // Agents report no percentage, so running shows an indeterminate bar.
             progress: (state == State::Running).then_some(Progress::INDETERMINATE),
             icon: Some("agent".into()),
-            expires_in: None,
+            expires_in,
             actions,
         },
     })

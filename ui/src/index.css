@@ -100,6 +100,38 @@ button {
   filter: var(--cap-shadow);
 }
 
+/* The capsule tint: two copies of the shape in the fill group, drawn solid and faded as a
+   group (so overlapping pieces can't show seams), which mixes the colour into --cap-bg at
+   --tint-strength. Only opacity animates; the layers change nothing about size or layout. */
+.tint-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-palette) linear;
+}
+
+.tint-layer.on {
+  opacity: var(--tint-strength);
+}
+
+.tint-layer .piece {
+  background: var(--music-tint);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tint-layer {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .tint-layer {
+    display: none;
+  }
+}
+
 .piece {
   position: absolute;
   top: 0;
@@ -296,6 +328,11 @@ button {
   }
 }
 
+.clock-colon {
+  opacity: 0.7;
+  color: var(--accent);
+}
+
 .widget-time {
   font-family: var(--font-display);
   font-size: 48px;
@@ -373,7 +410,50 @@ button {
 }
 
 .widget-weather {
+  position: relative;
+  isolation: isolate;
   gap: 10px;
+  --wx: var(--wx-cloud);
+}
+
+.widget-weather.tone-sun {
+  --wx: var(--wx-sun);
+}
+.widget-weather.tone-cloud {
+  --wx: var(--wx-cloud);
+}
+.widget-weather.tone-rain {
+  --wx: var(--wx-rain);
+}
+.widget-weather.tone-snow {
+  --wx: var(--wx-snow);
+}
+.widget-weather.tone-storm {
+  --wx: var(--warning);
+}
+
+/* A faint, static radial wash in the condition colour. */
+.widget-weather.tone-sun::before,
+.widget-weather.tone-cloud::before,
+.widget-weather.tone-rain::before,
+.widget-weather.tone-snow::before,
+.widget-weather.tone-storm::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 70% 80% at 20% 30%,
+    color-mix(in srgb, var(--wx) calc(var(--wx-wash-opacity) * 100%), transparent),
+    transparent
+  );
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .widget-weather::before {
+    display: none;
+  }
 }
 
 .weather-now {
@@ -385,6 +465,7 @@ button {
 .weather-glyph {
   flex: none;
   font-size: 40px;
+  color: var(--wx);
 }
 
 .glyph-warning {
@@ -448,18 +529,41 @@ button {
   font-weight: 600;
 }
 
-.widget-events {
-  gap: 6px;
+.hour:first-child .hour-temp {
+  color: var(--accent);
 }
 
-.event-now {
+.sparkline {
+  display: block;
+  flex: none;
+  width: 100%;
+  height: 14px;
+  overflow: visible;
+}
+
+.sparkline polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.widget-events {
+  gap: 0;
+}
+
+.event-head {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
 .event-until {
+  height: 16px;
   font-size: 12px;
+  line-height: 16px;
   color: var(--accent);
 }
 
@@ -467,64 +571,82 @@ button {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  height: 20px;
   font-family: var(--font-display);
   font-size: 16px;
   font-weight: 600;
+  line-height: 20px;
+}
+
+.event-head .widget-caption {
+  height: 16px;
+  line-height: 16px;
 }
 
 .divider {
   flex: none;
   height: 0.5px;
-  margin: 2px 0;
+  margin: 4px 0 4.5px;
   border: 0;
   background: var(--divider);
 }
 
-.event-scroll {
+/* Never scrolls: what does not fit is cut in the core ("+N more"); the fade is the
+   safety net for a font that runs taller than the budget. */
+.event-list {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--track) transparent;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
 }
 
 .event-day-name {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  height: 16px;
   margin: 0;
-  padding: 2px 0;
-  background: var(--cap-solid);
   font-family: var(--font-text);
   font-size: 11px;
   font-weight: 600;
+  line-height: 16px;
   color: var(--text-3);
 }
 
-.event-empty {
+.event-empty,
+.event-more {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--text-3);
 }
 
-.event-next {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.event-rows {
   margin: 0;
-  padding: 2px 0 6px;
+  padding: 0;
   list-style: none;
 }
 
-.event-next li {
+.event-row {
   display: flex;
-  align-items: baseline;
+  align-items: stretch;
   gap: 10px;
+  height: 20px;
+  padding: 2px 0;
   font-size: 13px;
+  line-height: 16px;
+}
+
+.event-row.past {
+  opacity: 0.4;
+}
+
+.event-bar {
+  flex: none;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--event-color, var(--event-default));
 }
 
 .event-name {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -534,10 +656,14 @@ button {
 
 .event-time {
   flex: none;
-  width: 52px;
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-3);
+}
+
+.event-now-line {
+  height: 9px;
+  background: linear-gradient(var(--accent), var(--accent)) center / 100% 1px no-repeat;
 }
 
 .item {

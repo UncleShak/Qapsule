@@ -255,6 +255,7 @@ mod tests {
                     temp_c: n as i32,
                     condition: "Clear".into(),
                     glyph: "clear".into(),
+                    tone: qapsule_core::view::WeatherTone::Sun,
                     high_c: 30,
                     low_c: 10,
                     hourly: vec![],

@@ -17,10 +17,16 @@ const OPENING = {
 
 /** The clock column: the time and date above, the last notifications below. */
 export function Clock({ time, date, history }: { time: string; date: string; history: HistoryView[] }) {
+  const [hours, minutes] = time.split(":", 2);
+  const colon = minutes !== undefined;
   return (
     <section className="widget widget-clock" aria-label="Clock and notifications" style={OPENING}>
       <div className="clock-top">
-        <span className="widget-time">{time}</span>
+        <span className="widget-time">
+          {hours}
+          {colon && <span className="clock-colon">:</span>}
+          {minutes}
+        </span>
         <span className="widget-date">{date}</span>
       </div>
       <div className="history-divider" />

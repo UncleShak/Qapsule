@@ -73,6 +73,19 @@ export interface UiState {
   undo: boolean;
   expanded: ExpandedView | null;
   focus: boolean;
+  /** The capsule's music tint as #rrggbb, or null. */
+  music_tint: string | null;
+  /** The theme provider's colours, or null to keep the built-in ones. */
+  palette: Palette | null;
+}
+
+/** Colours from Rust, all #rrggbb. The accents are already safe to read on the capsule. */
+export interface Palette {
+  accent: string;
+  accent_2: string;
+  /** The wallpaper's second colour at low chroma; null when the tint is off. */
+  tint: string | null;
+  source: "wallpaper" | "wallpaper_engine" | "capture" | "windows" | "custom";
 }
 
 export interface ExpandedView {
@@ -103,11 +116,14 @@ export interface HourView {
   glyph: string;
 }
 
+export type WeatherTone = "sun" | "cloud" | "rain" | "snow" | "storm";
+
 export interface WeatherReady {
   city: string;
   temp_c: number;
   condition: string;
   glyph: string;
+  tone: WeatherTone;
   high_c: number;
   low_c: number;
   hourly: HourView[];
@@ -120,21 +136,29 @@ export type WeatherView =
   | ({ kind: "ready" } & WeatherReady)
   | { kind: "unavailable" };
 
-export interface EventNow {
+export interface EventHead {
+  caption: string;
   title: string;
-  until: string;
   location: string | null;
 }
 
-export interface EventNext {
+export interface EventRow {
   title: string;
-  day: string;
   time: string;
+  color: string | null;
+  past: boolean;
+}
+
+export interface EventDay {
+  label: string | null;
+  now_line: number | null;
+  rows: EventRow[];
 }
 
 export interface EventsReady {
-  now: EventNow | null;
-  next: EventNext[];
+  head: EventHead | null;
+  days: EventDay[];
+  more: string | null;
   stale: boolean;
 }
 

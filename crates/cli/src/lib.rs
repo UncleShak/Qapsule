@@ -4,6 +4,7 @@
 pub mod calendar;
 pub mod client;
 pub mod hook;
+pub mod install;
 mod wrap;
 
 use std::io::{self, Read};
@@ -64,6 +65,22 @@ pub enum Command {
     Calendar {
         #[command(subcommand)]
         command: calendar::CalendarCommand,
+    },
+    /// Connect an agent to Qapsule by adding its hooks to the agent's settings
+    Install {
+        #[arg(value_enum)]
+        agent: Agent,
+        /// Settings file to edit (default: $CLAUDE_CONFIG_DIR or ~/.claude, then settings.json)
+        #[arg(long, value_name = "PATH")]
+        settings: Option<std::path::PathBuf>,
+    },
+    /// Remove the hooks `install` added; other settings and hooks are kept
+    Uninstall {
+        #[arg(value_enum)]
+        agent: Agent,
+        /// Settings file to edit (default: $CLAUDE_CONFIG_DIR or ~/.claude, then settings.json)
+        #[arg(long, value_name = "PATH")]
+        settings: Option<std::path::PathBuf>,
     },
     /// Turn an agent's hook event (JSON on stdin) into an activity. Always silent.
     Hook {
@@ -409,6 +426,22 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::Wrap(args) => {
             let code = wrap::run(&args);
             std::process::exit(code);
+        }
+        Command::Install {
+            agent: Agent::ClaudeCode,
+            settings,
+        } => {
+            let path = settings.map_or_else(install::default_settings_path, Ok)?;
+            println!("{}", install::install(&path)?);
+            Ok(())
+        }
+        Command::Uninstall {
+            agent: Agent::ClaudeCode,
+            settings,
+        } => {
+            let path = settings.map_or_else(install::default_settings_path, Ok)?;
+            println!("{}", install::uninstall(&path)?);
+            Ok(())
         }
         Command::Hook { agent } => {
             let mut input = String::new();

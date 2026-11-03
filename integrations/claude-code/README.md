@@ -5,7 +5,8 @@ Shows each Claude Code session in Qapsule: working, waiting for you, done, or st
 ## Set up
 
 1. Put `qapsule.exe` on your `PATH` (for now: `cargo build --release -p qapsule-cli`, then copy `target\release\qapsule.exe` to a folder on your `PATH`).
-2. Copy the `hooks` block from [`settings.json`](settings.json) into `~/.claude/settings.json` (all projects) or `.claude/settings.json` in one project. If the file already has a `hooks` block, merge the events into it.
+2. Run `qapsule install claude-code`. It adds the hooks to `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`), keeps everything else, saves the old file as `settings.json.bak`, and does nothing if they are already there. Use `--settings <path>` for another file, for example `.claude/settings.json` in one project. Hooks apply to new Claude Code sessions. `qapsule uninstall claude-code` removes them again.
+   Manual fallback: copy the `hooks` block from [`settings.json`](settings.json) into the same file, merging the events into any existing `hooks` block.
 3. Start Qapsule, then start Claude Code.
 
 Each hook runs `qapsule hook claude-code`, which reads the event Claude Code sends on stdin. It prints nothing and always succeeds, so it can never block or slow Claude down, even when Qapsule isn't running.
@@ -23,7 +24,11 @@ With Windows Terminal or VS Code, **Open terminal** brings that window to the fr
 | `Notification` (`permission_prompt`, `elicitation_dialog`, `agent_needs_input`) | Needs input: pops "Claude needs you" with Claude's message, until you answer |
 | `Stop` | Done: pops briefly, then leaves |
 | `StopFailure` | Stopped with an error: pops briefly, then leaves |
+| `SubagentStart` | Running: its own activity, "<agent type> is working" |
+| `SubagentStop` | Done: "<agent type> is done", then leaves |
 | `SessionEnd` | Removed |
+
+A subagent that never reports its stop leaves after 30 minutes; `SessionEnd` removes only the session's own activity.
 
 Other notification types, such as `idle_prompt`, are ignored. Claude Code sends `permission_prompt` only after a prompt has waited about six seconds, so quick answers don't pop.
 

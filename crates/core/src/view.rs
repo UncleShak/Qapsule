@@ -21,6 +21,33 @@ pub struct UiState {
     pub expanded: Option<ExpandedView>,
     /// The window should hold keyboard focus (the hotkey opened the view).
     pub focus: bool,
+    /// The capsule's tint from the album art as `#rrggbb`, while music plays and for 10 s after.
+    pub music_tint: Option<String>,
+    /// The theme provider's colours; `None` leaves the UI's built-in ones.
+    pub palette: Option<PaletteView>,
+}
+
+/// Where the palette came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PaletteSource {
+    Wallpaper,
+    WallpaperEngine,
+    Capture,
+    Windows,
+    Custom,
+}
+
+/// The colours the UI wears, as `#rrggbb`. Every accent is already safe to read on the
+/// capsule (decision: the UI never computes colours).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PaletteView {
+    pub accent: String,
+    pub accent_2: String,
+    /// The wallpaper's second colour at low chroma. The core drops it when
+    /// `wallpaper_tint` is off.
+    pub tint: Option<String>,
+    pub source: PaletteSource,
 }
 
 /// The main screen of the expanded view.
@@ -67,11 +94,24 @@ pub struct WeatherReady {
     pub temp_c: i32,
     pub condition: String,
     pub glyph: String,
+    /// What colour the condition takes in the UI.
+    pub tone: WeatherTone,
     pub high_c: i32,
     pub low_c: i32,
     pub hourly: Vec<HourView>,
     /// The last refresh failed; this is older data.
     pub stale: bool,
+}
+
+/// The condition colour family; the UI maps it to a `--wx-*` token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WeatherTone {
+    Sun,
+    Cloud,
+    Rain,
+    Snow,
+    Storm,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -93,26 +133,41 @@ pub enum EventsView {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EventsReady {
-    pub now: Option<EventNow>,
-    pub next: Vec<EventNext>,
+    /// The event in progress, or the next one today.
+    pub head: Option<EventHead>,
+    /// Rows grouped by day, already cut to what fits the card.
+    pub days: Vec<EventDay>,
+    /// `+3 more today` or `+3 more` when rows were cut.
+    pub more: Option<String>,
     pub stale: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct EventNow {
+pub struct EventHead {
+    /// `Now · until 15:20` or `In 18 min`.
+    pub caption: String,
     pub title: String,
-    /// End time as `HH:MM`.
-    pub until: String,
     pub location: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct EventNext {
+pub struct EventDay {
+    /// `Today`, `Tomorrow` or `Mon 2 Nov`; none when the head already says it is today.
+    pub label: Option<String>,
+    /// The "now" line goes before the row at this index (today only).
+    pub now_line: Option<usize>,
+    pub rows: Vec<EventRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EventRow {
     pub title: String,
-    /// Group label: `Today`, `Tomorrow` or `Mon 2 Nov`.
-    pub day: String,
     /// `08:30` local, or `All day`.
     pub time: String,
+    /// The event's colour as `#rrggbb`; none until a colour source is set.
+    pub color: Option<String>,
+    /// Finished today.
+    pub past: bool,
 }
 
 /// The most events the week list carries.

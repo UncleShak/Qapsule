@@ -5,6 +5,7 @@ mod autostart;
 pub mod identity;
 mod lifecycle;
 mod monitor;
+mod settings_window;
 mod watcher;
 mod window;
 
@@ -13,8 +14,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use qapsule_core::{Effect, PresenceEffect, Settings, UiState, VisibilityMode};
 use qapsule_providers::calendar::{Calendar, CalendarConfig};
+use qapsule_providers::colour::ColorRules;
 use qapsule_providers::media::{ArtStore, Media, SCHEME as ART_SCHEME};
 use qapsule_providers::notifications::{Notifications, Status};
+use qapsule_providers::theme::{Theme, ThemeConfig};
 use qapsule_providers::weather::Weather;
 use qapsule_server::config::{Change, Live};
 use qapsule_server::config_watch::{self, ConfigWatch};
@@ -39,6 +42,8 @@ struct WindowShell {
     /// Set once the engine exists, like `notifications`.
     weather: Arc<OnceLock<Weather>>,
     calendar: Arc<OnceLock<Calendar>>,
+    /// Set once the engine exists, like `notifications`.
+    theme: Arc<OnceLock<Theme>>,
     focus: Arc<window::Focus>,
 }
 
@@ -78,6 +83,9 @@ impl Shell for WindowShell {
         if let Some(calendar) = self.calendar.get() {
             calendar.main_screen(visible);
         }
+        if let Some(theme) = self.theme.get() {
+            theme.main_screen(visible);
+        }
     }
 }
 
@@ -90,6 +98,7 @@ struct AppState {
     autostart_item: CheckMenuItem<Wry>,
     weather: Arc<OnceLock<Weather>>,
     calendar: Arc<OnceLock<Calendar>>,
+    theme: Arc<OnceLock<Theme>>,
     /// Keeps the config file watch alive for as long as the app runs.
     config_watch: Mutex<Option<ConfigWatch>>,
     focus: Arc<window::Focus>,
@@ -188,6 +197,9 @@ fn push_settings(state: &AppState, settings: &Settings) {
     if let Some(calendar) = state.calendar.get() {
         calendar.set_config(calendar_config(settings));
     }
+    if let Some(theme) = state.theme.get() {
+        theme.set_config(ThemeConfig::from_settings(settings));
+    }
 }
 
 /// Makes the checkboxes match the settings in memory. Never call it with the
@@ -247,6 +259,7 @@ fn calendar_config(settings: &Settings) -> CalendarConfig {
     CalendarConfig {
         minutes_before: settings.calendar_minutes_before,
         pops: settings.pop_setting("calendar:events").pop,
+        colors: ColorRules::new(&settings.calendar_colors),
     }
 }
 
@@ -294,6 +307,7 @@ fn build_tray(
     }
     let refs: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = items.iter().map(|(_, i)| i as _).collect();
     let visibility = Submenu::with_items(app, "Visibility", true, &refs)?;
+    let settings_item = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Qapsule", true, None::<&str>)?;
     let status = MenuItem::with_id(
         app,
@@ -344,6 +358,7 @@ fn build_tray(
             &dnd,
             &visibility,
             &autostart,
+            &settings_item,
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
@@ -354,6 +369,7 @@ fn build_tray(
         .menu(&menu)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "quit" => app.exit(0),
+            "settings" => settings_window::open(app),
             "do-not-disturb" => {
                 user_change(app, |s| Change::DoNotDisturb(!s.do_not_disturb));
             }
@@ -443,7 +459,9 @@ pub fn run() {
             expand_click,
             media_click,
             close_expanded,
-            set_hit_rects
+            set_hit_rects,
+            settings_window::get_appearance,
+            settings_window::set_appearance
         ])
         .setup(|app| {
             let config_path = config::config_path();
@@ -459,6 +477,7 @@ pub fn run() {
             let notifications = Arc::new(OnceLock::new());
             let weather = Arc::new(OnceLock::new());
             let calendar = Arc::new(OnceLock::new());
+            let theme = Arc::new(OnceLock::new());
             let media = Arc::new(OnceLock::new());
             let focus = Arc::new(window::Focus::default());
             let shell = WindowShell {
@@ -468,12 +487,15 @@ pub fn run() {
                 media: media.clone(),
                 weather: weather.clone(),
                 calendar: calendar.clone(),
+                theme: theme.clone(),
                 focus: focus.clone(),
             };
             let pipe = pipe_name();
             let initial = settings.clone();
             let city = settings.weather_city().map(str::to_owned);
             let calendar_config = calendar_config(&settings);
+            let theme_config = ThemeConfig::from_settings(&settings);
+            let theme_slot = theme.clone();
             let (weather_slot, calendar_slot) = (weather.clone(), calendar.clone());
             let started = tauri::async_runtime::block_on(async move {
                 let listener = Listener::bind(&pipe)?;
@@ -482,6 +504,8 @@ pub fn run() {
                 // Starts its task on this runtime; nothing is fetched until the main screen opens.
                 let _ = weather_slot.set(Weather::start(engine.clone(), city));
                 let _ = calendar_slot.set(Calendar::start(engine.clone(), calendar_config));
+                // Works out the first palette on its own thread, then waits for events.
+                let _ = theme_slot.set(Theme::start(engine.clone(), theme_config));
                 Ok::<_, std::io::Error>(engine)
             });
             let engine = match started {
@@ -512,6 +536,7 @@ pub fn run() {
                 autostart_item: tray.autostart,
                 weather,
                 calendar,
+                theme: theme.clone(),
                 config_watch: Mutex::new(None),
                 focus,
             });
@@ -519,6 +544,7 @@ pub fn run() {
 
             let handle = app.handle().clone();
             let hotkey_item = tray.hotkey;
+            let theme_for_wallpaper = theme.clone();
             watcher::spawn(
                 engine,
                 settings_hotkey,
@@ -528,6 +554,11 @@ pub fn run() {
                 move || {
                     if let Some(main) = handle.get_webview_window("main") {
                         window::place(&main);
+                    }
+                },
+                move || {
+                    if let Some(theme) = theme_for_wallpaper.get() {
+                        theme.wallpaper_changed();
                     }
                 },
             );

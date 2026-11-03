@@ -260,6 +260,46 @@ mod claude_code_hook {
     }
 
     #[test]
+    fn subagent_start_is_its_own_running_activity() {
+        let a = upserted(claude_code(
+            &event(
+                "SubagentStart",
+                r#","agent_id":"ag 1","agent_type":"aristotle""#,
+            ),
+            None,
+        ));
+        assert_eq!(a.id, "cc-abc-123-ag-1");
+        assert_eq!(a.title, "aristotle is working");
+        assert_eq!(a.state, State::Running);
+        assert!(a.expires_in.is_some());
+    }
+
+    #[test]
+    fn subagent_stop_succeeds_and_falls_back_to_a_generic_name() {
+        let a = upserted(claude_code(
+            &event("SubagentStop", r#","agent_id":"ag1""#),
+            None,
+        ));
+        assert_eq!(a.id, "cc-abc-123-ag1");
+        assert_eq!(a.title, "Subagent is done");
+        assert_eq!(a.state, State::Succeeded);
+        let named = upserted(claude_code(
+            &event("SubagentStop", r#","agent_id":"ag1","agent_type":"thales""#),
+            None,
+        ));
+        assert_eq!(named.title, "thales is done");
+    }
+
+    #[test]
+    fn subagent_events_without_an_agent_id_are_ignored() {
+        assert_eq!(claude_code(&event("SubagentStart", ""), None), None);
+        assert_eq!(
+            claude_code(&event("SubagentStop", r#","agent_id":"""#), None),
+            None
+        );
+    }
+
+    #[test]
     fn session_end_clears_it() {
         assert_eq!(
             claude_code(&event("SessionEnd", r#","reason":"exit""#), None),

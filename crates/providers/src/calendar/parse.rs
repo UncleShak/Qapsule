@@ -44,6 +44,8 @@ pub struct Occurrence {
     pub uid: String,
     pub title: String,
     pub location: Option<String>,
+    /// The iCal `COLOR` (RFC 7986) as `#rrggbb`, when it was hex or a CSS colour name.
+    pub color: Option<String>,
     pub span: Span,
 }
 
@@ -257,6 +259,7 @@ struct RawEvent {
     uid: Option<String>,
     summary: Option<String>,
     location: Option<String>,
+    color: Option<String>,
     dtstart: Option<Prop>,
     dtend: Option<Prop>,
     duration: Option<String>,
@@ -291,6 +294,9 @@ fn raw_events(text: &str) -> (Vec<RawEvent>, bool) {
                 "UID" => event.uid = Some(prop.value.trim().to_string()),
                 "SUMMARY" => event.summary = Some(unescape(&prop.value)),
                 "LOCATION" => event.location = Some(unescape(&prop.value)),
+                "COLOR" => {
+                    event.color = crate::colour::parse_css(&prop.value).map(|c| c.hex());
+                }
                 "DTSTART" => event.dtstart = Some(prop),
                 "DTEND" => event.dtend = Some(prop),
                 "DURATION" => event.duration = Some(prop.value),
@@ -499,6 +505,7 @@ pub fn parse_calendar(
                 uid: uid.clone(),
                 title: event.summary.clone().unwrap_or_default(),
                 location: event.location.clone().filter(|l| !l.trim().is_empty()),
+                color: event.color.clone(),
                 span,
             });
         }
@@ -615,6 +622,19 @@ mod tests {
             starts,
             vec![utc("2025-03-10 10:00"), utc("2025-03-12 10:00")]
         );
+    }
+
+    #[test]
+    fn the_color_property_reads_hex_and_css_names() {
+        let text = calendar(concat!(
+            "BEGIN:VEVENT\r\nUID:a\r\nDTSTART:20250310T140000Z\r\nSUMMARY:Hex\r\nCOLOR:#7AA2F7\r\nEND:VEVENT\r\n",
+            "BEGIN:VEVENT\r\nUID:b\r\nDTSTART:20250310T150000Z\r\nSUMMARY:Named\r\nCOLOR:Tomato\r\nEND:VEVENT\r\n",
+            "BEGIN:VEVENT\r\nUID:c\r\nDTSTART:20250310T160000Z\r\nSUMMARY:Junk\r\nCOLOR:not-a-colour\r\nEND:VEVENT\r\n",
+            "BEGIN:VEVENT\r\nUID:d\r\nDTSTART:20250310T170000Z\r\nSUMMARY:None\r\nEND:VEVENT\r\n",
+        ));
+        let all = parse_calendar(&text, JOBURG, utc("2025-03-10 08:00")).unwrap();
+        let colors: Vec<_> = all.iter().map(|o| o.color.as_deref()).collect();
+        assert_eq!(colors, vec![Some("#7aa2f7"), Some("#ff6347"), None, None]);
     }
 
     #[test]

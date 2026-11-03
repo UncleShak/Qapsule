@@ -4,6 +4,11 @@
   --cap-bg: rgba(14, 14, 18, 0.94); /* the capsule fill; solid CSS, NOT Mica/Acrylic */
   --cap-solid: rgb(14, 14, 18); /* the same colour, for pieces drawn inside a 0.94 group */
   --cap-opacity: 0.94;
+  /* Capsule tints (DESIGN.md section 2): colours set at runtime, transparent until then. */
+  --tint: transparent; /* from the wallpaper (the theme provider) */
+  --music-tint: transparent; /* from the album art while music plays */
+  --tint-strength: 0.05; /* how much of the tint shows over --cap-bg */
+  --dur-palette: 600ms; /* a tint change cross-fades over this, linearly */
   --cap-edge: rgba(255, 255, 255, 0.16);
   /* The spec's 0 20px 50px shadow would be cut off by the click-through region; this one fits it. */
   --cap-shadow: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.45));
@@ -21,14 +26,23 @@
   --track: rgba(255, 255, 255, 0.16);
   --ring-track: rgba(255, 255, 255, 0.14);
   --divider: rgba(255, 255, 255, 0.16);
+  --event-default: var(--text-3);
 
   /* Accent: the Windows default dark-mode accent until Rust supplies the user's own */
   --accent: #60cdff;
+  --accent-2: var(--accent); /* the wallpaper's second colour; hairline details only */
   --selection: color-mix(in srgb, var(--accent) 14%, transparent);
   --selection-strong: color-mix(in srgb, var(--accent) 18%, transparent);
 
   /* Semantic */
   --warning: #fce100; /* weather lightning only */
+
+  /* Weather condition colours (icon + faint wash) */
+  --wx-sun: #ffb547;
+  --wx-rain: #6fb6ff;
+  --wx-cloud: var(--text-2);
+  --wx-snow: #ffffff;
+  --wx-wash-opacity: 0.06;
 
   /* Type */
   --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;

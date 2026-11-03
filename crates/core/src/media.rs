@@ -135,6 +135,9 @@ fn same_view(old: &MediaState, new: &MediaState, now: Instant) -> bool {
         }
 }
 
+/// How long the capsule keeps the music tint after playback pauses or stops.
+pub(crate) const TINT_LINGER: Duration = Duration::from_secs(10);
+
 impl Core {
     /// The media provider has a new state, or nothing is playing (`None`).
     pub fn set_media(&mut self, media: Option<MediaState>, now: Instant) {
@@ -146,6 +149,7 @@ impl Core {
             self.media_shown = None;
             self.media_open = false;
             self.media_close_at = None;
+            self.refresh_music_tint(now);
             self.coalescer.mark(now);
             return;
         };
@@ -160,6 +164,38 @@ impl Core {
             self.coalescer.mark(now);
         }
         self.media = Some(new);
+        if self.refresh_music_tint(now) {
+            self.coalescer.mark(now);
+        }
+    }
+
+    /// Works out the capsule's music tint. While a song with a cover colour plays it is
+    /// that colour; once playback pauses or stops the last colour stays for [`TINT_LINGER`],
+    /// then goes. Returns whether the tint the UI sees changed.
+    pub(crate) fn refresh_music_tint(&mut self, now: Instant) -> bool {
+        let before = self.music_tint.as_ref().map(|(c, _)| c.clone());
+        let details = self.settings.pop_setting(SOURCE).details;
+        let playing = self
+            .media
+            .as_ref()
+            .filter(|m| m.playing && details && self.settings.music_tint);
+        self.music_tint = if !self.settings.music_tint {
+            None
+        } else if let Some(m) = playing {
+            // Playing: the cover's colour, or none at all for a cover without one.
+            m.art
+                .as_ref()
+                .zip(m.art_tint)
+                .map(|(_, [r, g, b])| (format!("#{r:02x}{g:02x}{b:02x}"), None))
+        } else {
+            match self.music_tint.take() {
+                // It was live a moment ago: the countdown starts now.
+                Some((colour, None)) => Some((colour, Some(now + TINT_LINGER))),
+                Some((_, Some(until))) if until <= now => None,
+                other => other,
+            }
+        };
+        before != self.music_tint.as_ref().map(|(c, _)| c.clone())
     }
 
     /// The cover was clicked: opens the media view, or closes it. It opens only with music

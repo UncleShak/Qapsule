@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { closeExpanded, dismissPop, pointerSlowed, press, setPointer, subscribe } from "./bridge";
 import { Capsule } from "./capsule/Capsule";
+import { usePalette } from "./palette";
 import type { UiState } from "./types";
 
 function App() {
@@ -8,6 +9,7 @@ function App() {
   const [hovered, setHovered] = useState(false);
 
   useEffect(() => subscribe(setState), []);
+  usePalette(state?.palette ?? null);
 
   const expanded = state?.expanded != null;
   // The core decides when to expand; the UI only reports how the pointer moved.

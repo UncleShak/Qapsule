@@ -1614,6 +1614,7 @@ fn weather_ready() -> WeatherView {
         temp_c: 24,
         condition: "Sunny".into(),
         glyph: "sun".into(),
+        tone: WeatherTone::Sun,
         high_c: 28,
         low_c: 14,
         hourly: vec![HourView {
@@ -1703,23 +1704,32 @@ fn the_widget_views_serialise_with_a_kind_tag() {
         Some("no_city")
     );
     let events = EventsView::Ready(EventsReady {
-        now: Some(EventNow {
+        head: Some(EventHead {
+            caption: "Now · until 15:20".into(),
             title: "Standup".into(),
-            until: "15:20".into(),
             location: None,
         }),
-        next: vec![EventNext {
-            title: "Lunch".into(),
-            day: "Tomorrow".into(),
-            time: "09:00".into(),
+        days: vec![EventDay {
+            label: Some("Tomorrow".into()),
+            now_line: None,
+            rows: vec![EventRow {
+                title: "Lunch".into(),
+                time: "09:00".into(),
+                color: None,
+                past: false,
+            }],
         }],
+        more: None,
         stale: true,
     });
     let events = value(&events);
     assert_eq!(events["kind"].as_str(), Some("ready"));
-    assert_eq!(events["now"]["until"].as_str(), Some("15:20"));
-    assert_eq!(events["next"][0]["day"].as_str(), Some("Tomorrow"));
-    assert_eq!(events["next"][0]["time"].as_str(), Some("09:00"));
+    assert_eq!(
+        events["head"]["caption"].as_str(),
+        Some("Now · until 15:20")
+    );
+    assert_eq!(events["days"][0]["label"].as_str(), Some("Tomorrow"));
+    assert_eq!(events["days"][0]["rows"][0]["time"].as_str(), Some("09:00"));
     assert_eq!(value(&EventsView::NoLink)["kind"].as_str(), Some("no_link"));
 }
 
@@ -2801,4 +2811,234 @@ fn a_tint_change_alone_is_a_visible_change() {
         panic!()
     };
     assert_eq!(music(main).art_tint.as_deref(), Some("#0a28c8"));
+}
+
+#[test]
+fn calendar_colors_are_read_in_file_order() {
+    let (settings, warnings) = Settings::from_toml(
+        "[calendar.colors]
+\"COS 214\" = \"#7AA2F7\"
+\"WTW 285\" = \"tomato\"
+bad = 3
+",
+    );
+    assert_eq!(
+        settings.calendar_colors,
+        vec![
+            ("COS 214".to_string(), "#7AA2F7".to_string()),
+            ("WTW 285".to_string(), "tomato".to_string())
+        ]
+    );
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(Settings::default().calendar_colors.is_empty());
+}
+
+// The capsule's music tint.
+
+const ART: &str = "http://qapsule-art.localhost/x";
+
+fn playing_tint(tint: [u8; 3], playing: bool, now: Instant) -> MediaState {
+    MediaState {
+        playing,
+        ..tinted(Some(ART), Some(tint), now)
+    }
+}
+
+fn capsule_tint(core: &Core, now: Instant) -> Option<String> {
+    core.snapshot(now).music_tint
+}
+
+#[test]
+fn playing_music_tints_the_capsule() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    assert_eq!(capsule_tint(&core, clock.now()), None);
+    core.take_update(clock.now());
+    assert_eq!(core.next_deadline(), None, "no music, no wakeup");
+    core.set_media(
+        Some(playing_tint([200, 40, 9], true, clock.now())),
+        clock.now(),
+    );
+    assert_eq!(capsule_tint(&core, clock.now()).as_deref(), Some("#c82809"));
+    assert!(
+        core.take_update(clock.advance(300))
+            .is_some_and(|u| u.music_tint.is_some())
+    );
+    assert_eq!(core.next_deadline(), None, "playing owes no wakeup");
+}
+
+#[test]
+fn a_pause_keeps_the_tint_for_ten_seconds() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(
+        Some(playing_tint([200, 40, 9], true, clock.now())),
+        clock.now(),
+    );
+    core.take_update(clock.advance(300));
+    let paused_at = clock.now();
+    core.set_media(
+        Some(playing_tint([200, 40, 9], false, clock.now())),
+        clock.now(),
+    );
+    assert_eq!(capsule_tint(&core, clock.now()).as_deref(), Some("#c82809"));
+    let due = paused_at + Duration::from_secs(10);
+    core.take_update(clock.advance(300));
+    assert_eq!(core.next_deadline(), Some(due), "the linger is the wake");
+
+    core.tick(clock.advance(9_000));
+    assert_eq!(capsule_tint(&core, clock.now()).as_deref(), Some("#c82809"));
+    core.tick(due);
+    assert_eq!(capsule_tint(&core, due), None);
+    assert!(core.take_update(due + Duration::from_millis(300)).is_some());
+    assert_eq!(core.next_deadline(), None);
+}
+
+#[test]
+fn stopping_lingers_too_and_resuming_keeps_the_tint() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(
+        Some(playing_tint([1, 2, 3], true, clock.now())),
+        clock.now(),
+    );
+    core.set_media(None, clock.advance(100));
+    assert_eq!(capsule_tint(&core, clock.now()).as_deref(), Some("#010203"));
+    core.tick(clock.advance(5_000));
+    core.set_media(
+        Some(playing_tint([1, 2, 3], true, clock.now())),
+        clock.now(),
+    );
+    core.tick(clock.advance(20_000));
+    assert_eq!(
+        capsule_tint(&core, clock.now()).as_deref(),
+        Some("#010203"),
+        "playing again: no countdown"
+    );
+}
+
+#[test]
+fn a_new_track_switches_the_tint_and_no_tint_means_none() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.set_media(
+        Some(playing_tint([200, 40, 9], true, clock.now())),
+        clock.now(),
+    );
+    core.set_media(
+        Some(playing_tint([10, 40, 200], true, clock.now())),
+        clock.advance(100),
+    );
+    assert_eq!(capsule_tint(&core, clock.now()).as_deref(), Some("#0a28c8"));
+    core.set_media(
+        Some(tinted(Some(ART), None, clock.now())),
+        clock.advance(100),
+    );
+    assert_eq!(capsule_tint(&core, clock.now()), None);
+}
+
+#[test]
+fn the_music_tint_setting_turns_it_off() {
+    let mut clock = Clock::new();
+    let (settings, warnings) = Settings::from_toml("[appearance]\nmusic_tint = false\n");
+    assert!(warnings.is_empty() && !settings.music_tint);
+    assert!(Settings::default().music_tint);
+    let mut core = Core::new(settings, clock.now());
+    core.set_media(
+        Some(playing_tint([200, 40, 9], true, clock.now())),
+        clock.now(),
+    );
+    assert_eq!(capsule_tint(&core, clock.now()), None);
+    core.set_media(
+        Some(playing_tint([200, 40, 9], false, clock.now())),
+        clock.advance(100),
+    );
+    assert_eq!(capsule_tint(&core, clock.now()), None);
+
+    // Turning it off while tinted clears it at once.
+    let mut on = Core::new(Settings::default(), clock.now());
+    on.set_media(
+        Some(playing_tint([200, 40, 9], true, clock.now())),
+        clock.now(),
+    );
+    on.set_settings(
+        Settings {
+            music_tint: false,
+            ..Settings::default()
+        },
+        clock.now(),
+    );
+    assert_eq!(capsule_tint(&on, clock.now()), None);
+}
+
+// The theme provider's palette.
+
+fn wallpaper_palette() -> PaletteView {
+    PaletteView {
+        accent: "#c86432".into(),
+        accent_2: "#3264c8".into(),
+        tint: Some("#5a3c3c".into()),
+        source: PaletteSource::Wallpaper,
+    }
+}
+
+#[test]
+fn the_palette_reaches_the_ui_once_and_only_on_change() {
+    let mut clock = Clock::new();
+    let mut core = Core::new(Settings::default(), clock.now());
+    core.take_update(clock.now());
+    assert_eq!(core.snapshot(clock.now()).palette, None);
+
+    let now = clock.advance(1000);
+    core.set_palette(Some(wallpaper_palette()), now);
+    let update = core.take_update(now).expect("a new palette is news");
+    assert_eq!(update.palette, Some(wallpaper_palette()));
+
+    // The same palette again changes nothing.
+    let now = clock.advance(1000);
+    core.set_palette(Some(wallpaper_palette()), now);
+    assert!(core.take_update(now).is_none());
+
+    // Losing the palette is news too.
+    let now = clock.advance(1000);
+    core.set_palette(None, now);
+    assert_eq!(core.take_update(now).map(|u| u.palette), Some(None));
+}
+
+#[test]
+fn the_wallpaper_tint_setting_drops_only_the_tint() {
+    let clock = Clock::new();
+    let (settings, warnings) = Settings::from_toml("[appearance]\nwallpaper_tint = false\n");
+    assert!(warnings.is_empty());
+    let mut core = Core::new(settings, clock.now());
+    core.set_palette(Some(wallpaper_palette()), clock.now());
+    let palette = core.snapshot(clock.now()).palette.unwrap();
+    assert_eq!(palette.tint, None);
+    assert_eq!(palette.accent, "#c86432");
+
+    // Turning it back on shows the tint again, without a new palette.
+    core.set_settings(Settings::default(), clock.now());
+    let palette = core.snapshot(clock.now()).palette.unwrap();
+    assert_eq!(palette.tint.as_deref(), Some("#5a3c3c"));
+}
+
+#[test]
+fn the_appearance_settings_are_read() {
+    let defaults = Settings::default();
+    assert_eq!(defaults.accent_source, AccentSource::Wallpaper);
+    assert_eq!(defaults.custom_accent, "#60CDFF");
+    assert!(defaults.wallpaper_tint);
+
+    let (settings, warnings) = Settings::from_toml(
+        "[appearance]\naccent_source = \"custom\"\ncustom_accent = \"#ff8800\"\n",
+    );
+    assert!(warnings.is_empty());
+    assert_eq!(settings.accent_source, AccentSource::Custom);
+    assert_eq!(settings.custom_accent, "#ff8800");
+
+    let (settings, warnings) =
+        Settings::from_toml("[appearance]\naccent_source = \"rainbow\"\ncustom_accent = 5\n");
+    assert_eq!(warnings.len(), 2);
+    assert_eq!(settings.accent_source, AccentSource::Wallpaper);
+    assert_eq!(settings.custom_accent, "#60CDFF");
 }

@@ -1,0 +1,216 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: var(--cap-solid);
+}
+
+body {
+  color: var(--text-1);
+  font-family: var(--font-text);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  cursor: default;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--text-3);
+}
+
+.settings {
+  box-sizing: border-box;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font: 600 18px / 1.2 var(--font-display);
+  color: var(--text-1);
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.segments {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--r-control);
+  background: var(--fill-subtle);
+}
+
+.segment {
+  position: relative;
+  flex: 1;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.segment::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--selection-strong);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.segment:hover {
+  color: var(--text-2);
+}
+
+.segment[aria-checked="true"] {
+  color: var(--accent);
+}
+
+.segment[aria-checked="true"]::before {
+  opacity: 1;
+}
+
+.segment span {
+  position: relative;
+}
+
+.colour {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hex {
+  box-sizing: border-box;
+  width: 120px;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: var(--fill-subtle);
+  color: var(--text-1);
+  font: 400 13px var(--font-mono);
+  user-select: text;
+}
+
+.hex.invalid {
+  box-shadow: inset 0 0 0 1px var(--text-2);
+}
+
+.swatch {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-control);
+  background: none;
+}
+
+.swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.swatch::-webkit-color-swatch {
+  border: 1px solid var(--divider);
+  border-radius: var(--r-control);
+}
+
+.error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.toggle {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+}
+
+.toggle input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+}
+
+.track {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.track .on {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--text-2);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.toggle input:checked ~ .track .on {
+  opacity: 1;
+}
+
+.toggle input:checked ~ .track .knob {
+  background: var(--cap-solid);
+  transform: translateX(16px);
+}
+
+.toggle input:focus-visible ~ .track {
+  box-shadow: 0 0 0 2px var(--text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segment::before,
+  .track .on,
+  .knob {
+    transition: none;
+  }
+}
