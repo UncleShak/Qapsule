@@ -61,6 +61,12 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .cloned()
         .expect("tauri.conf.json defines the main window");
     let window = WebviewWindowBuilder::from_config(app, &config)?.build()?;
+    // Dev builds only: `$env:QAPSULE_DEVTOOLS=1` opens the capsule's developer tools, the
+    // only way to see its console, since the window is invisible until the page draws.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("QAPSULE_DEVTOOLS").is_some() {
+        window.open_devtools();
+    }
     make_tool_window(&window);
     place(&window);
     set_region(&window, &[]);
