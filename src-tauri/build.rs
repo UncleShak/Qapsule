@@ -1,10 +1,34 @@
-/// Commands that only the settings window may call (see capabilities/settings.json).
-/// Listing them here makes Tauri require a permission for each; the capsule's
-/// capability doesn't grant them.
+/// Every app command. Once an app manifest exists, Tauri refuses any app command that
+/// no capability grants, so the capsule's commands must be listed here and granted in
+/// capabilities/default.json, and the settings window's in capabilities/settings.json.
+/// A command missing from here fails at runtime with "not allowed. Command not found".
+const COMMANDS: &[&str] = &[
+    // The capsule (capabilities/default.json).
+    "get_snapshot",
+    "press_action",
+    "press_history",
+    "dismiss_pop",
+    "undo",
+    "swap_peek",
+    "set_pointer",
+    "pointer_slowed",
+    "expand_click",
+    "media_click",
+    "close_expanded",
+    "set_hit_rects",
+    "focus_toggle",
+    "focus_reset",
+    "focus_length",
+    "focus_module",
+    "set_screen",
+    "step_screen",
+    // The settings window only (capabilities/settings.json).
+    "get_appearance",
+    "set_appearance",
+];
+
 fn attributes() -> tauri_build::Attributes {
-    tauri_build::Attributes::new().app_manifest(
-        tauri_build::AppManifest::new().commands(&["get_appearance", "set_appearance"]),
-    )
+    tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(COMMANDS))
 }
 
 fn main() {

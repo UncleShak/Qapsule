@@ -1,7 +1,29 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "description": "The capsule window: the commands it uses, and nothing from the settings window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-get-snapshot",
+    "allow-press-action",
+    "allow-press-history",
+    "allow-dismiss-pop",
+    "allow-undo",
+    "allow-swap-peek",
+    "allow-set-pointer",
+    "allow-pointer-slowed",
+    "allow-expand-click",
+    "allow-media-click",
+    "allow-close-expanded",
+    "allow-set-hit-rects",
+    "allow-focus-toggle",
+    "allow-focus-reset",
+    "allow-focus-length",
+    "allow-focus-module",
+    "allow-set-screen",
+    "allow-step-screen"
+  ]
 }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pointer-slowed"
+description = "Enables the pointer_slowed command without any pre-configured scope."
+commands.allow = ["pointer_slowed"]
+
+[[permission]]
+identifier = "deny-pointer-slowed"
+description = "Denies the pointer_slowed command without any pre-configured scope."
+commands.deny = ["pointer_slowed"]

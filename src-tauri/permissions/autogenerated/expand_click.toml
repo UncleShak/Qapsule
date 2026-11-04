@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-expand-click"
+description = "Enables the expand_click command without any pre-configured scope."
+commands.allow = ["expand_click"]
+
+[[permission]]
+identifier = "deny-expand-click"
+description = "Denies the expand_click command without any pre-configured scope."
+commands.deny = ["expand_click"]

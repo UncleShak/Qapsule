@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-focus-reset"
+description = "Enables the focus_reset command without any pre-configured scope."
+commands.allow = ["focus_reset"]
+
+[[permission]]
+identifier = "deny-focus-reset"
+description = "Denies the focus_reset command without any pre-configured scope."
+commands.deny = ["focus_reset"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-focus-length"
+description = "Enables the focus_length command without any pre-configured scope."
+commands.allow = ["focus_length"]
+
+[[permission]]
+identifier = "deny-focus-length"
+description = "Denies the focus_length command without any pre-configured scope."
+commands.deny = ["focus_length"]

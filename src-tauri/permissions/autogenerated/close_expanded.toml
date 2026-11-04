@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-expanded"
+description = "Enables the close_expanded command without any pre-configured scope."
+commands.allow = ["close_expanded"]
+
+[[permission]]
+identifier = "deny-close-expanded"
+description = "Denies the close_expanded command without any pre-configured scope."
+commands.deny = ["close_expanded"]

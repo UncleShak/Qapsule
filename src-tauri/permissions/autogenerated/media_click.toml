@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-media-click"
+description = "Enables the media_click command without any pre-configured scope."
+commands.allow = ["media_click"]
+
+[[permission]]
+identifier = "deny-media-click"
+description = "Denies the media_click command without any pre-configured scope."
+commands.deny = ["media_click"]
