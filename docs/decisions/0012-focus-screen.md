@@ -1,10 +1,10 @@
-# 12. A Focus screen and lively motion, from the Bloom fork
+# 12. A Focus screen and lively motion
 
 Date: 2026-11-04 · Status: proposed (demo on the `fork-integration` branch)
 
 ## Context
 
-Tanatswa's fork of Bloom has a study timer that knows which module you are working on, a per-module study log with a week chart and a streak, and springier motion. Qapsule has the engine Bloom lacks: Rust owns the state, the webview is disposable and the idle cost is close to zero. The demo asks what Qapsule looks like with Bloom's feel on top, without breaking AGENTS.md:
+Tanatswa's earlier notch app has a study timer that knows which module you are working on, a per-module study log with a week chart and a streak, and springier motion. Qapsule has the engine it lacks: Rust owns the state, the webview is disposable and the idle cost is close to zero. The demo asks what Qapsule looks like with that feel on top, without breaking AGENTS.md:
 
 - Rust owns all state, so the timer and the log can't live in the UI.
 - No JS timers or animation loops, so the UI can't count seconds itself.
@@ -13,7 +13,7 @@ Tanatswa's fork of Bloom has a study timer that knows which module you are worki
 
 ## Options
 
-1. **Port Bloom's React timer as it is.** It keeps time in the UI with `setInterval` and saves to `localStorage`. Breaks rules 1 and 2, and the log would be lost with the webview. Rejected.
+1. **Port the old React timer as it is.** It keeps time in the UI with `setInterval` and saves to `localStorage`. Breaks rules 1 and 2, and the log would be lost with the webview. Rejected.
 2. **A provider that pushes the timer as an ordinary activity.** Peek and pops come for free, but provider activities are pop-only and never reach the peek (decision 0006), and the log and the module chip still need a home. Rejected.
 3. **A focus module in the core, alongside music.** The timer runs on the `now` callers pass in, like every other timer in the core. It is a peek candidate the way music is, and the expanded view gets a second screen. Chosen.
 
@@ -34,7 +34,7 @@ Tanatswa's fork of Bloom has a study timer that knows which module you are worki
 
 ## Consequences
 
-- Qapsule gains Bloom's study features at about the same idle cost: nothing runs while no session is going, and a running session hidden from view wakes the engine once a minute.
+- Qapsule gains these study features at about the same idle cost: nothing runs while no session is going, and a running session hidden from view wakes the engine once a minute.
 - `study.toml` is the first file Qapsule writes besides the config. It holds module codes and seconds only, never notification text.
 - Two screens instead of the spec's three for now. The right-hand System screen is still to come and slots onto the same track.
 - Open for Shaq: whether lively motion belongs in Qapsule at all, the default countdown length, and whether holding pops during focus should be a setting.

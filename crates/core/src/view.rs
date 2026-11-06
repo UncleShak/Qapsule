@@ -26,7 +26,7 @@ pub struct UiState {
     pub music_tint: Option<String>,
     /// The theme provider's colours; `None` leaves the UI's built-in ones.
     pub palette: Option<PaletteView>,
-    /// `[appearance] motion`: Qapsule's calm springs, or Bloom's livelier ones.
+    /// `[appearance] motion`: Qapsule's calm springs, or livelier ones.
     pub motion: Motion,
 }
 

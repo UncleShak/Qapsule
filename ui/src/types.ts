@@ -79,7 +79,7 @@ export interface UiState {
   music_tint: string | null;
   /** The theme provider's colours, or null to keep the built-in ones. */
   palette: Palette | null;
-  /** Qapsule's calm springs, or Bloom's livelier ones (decision 0012). */
+  /** Qapsule's calm springs, or livelier ones (decision 0012). */
   motion: Motion;
 }
 

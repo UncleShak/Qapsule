@@ -44,7 +44,7 @@ pub enum Motion {
     /// Qapsule's own springs: barely any overshoot.
     #[default]
     Calm,
-    /// Bloom's feel: the same timings with a visible bounce.
+    /// The same timings with a visible bounce.
     Lively,
 }
 

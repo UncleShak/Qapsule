@@ -1,6 +1,6 @@
-//! Focus: a study timer with a module chip and a per-module study log, brought over
-//! from the Bloom fork (decision 0012). Rust owns all of it: the UI only shows the
-//! [`FocusView`] it is given and sends presses back.
+//! Focus: a study timer with a module chip and a per-module study log (decision 0012).
+//! Rust owns all of it: the UI only shows the [`FocusView`] it is given and sends presses
+//! back.
 //!
 //! The timer counts down from 15, 25 or 50 minutes, or counts up. Every focused second
 //! is credited to the day and the module, and the log is saved as `study.toml` beside
@@ -883,7 +883,7 @@ mod tests {
     }
 
     #[test]
-    fn durations_read_like_bloom() {
+    fn durations_read_naturally() {
         assert_eq!(duration_text(59), "0 min");
         assert_eq!(duration_text(42 * 60), "42 min");
         assert_eq!(duration_text(80 * 60), "1 h 20 min");

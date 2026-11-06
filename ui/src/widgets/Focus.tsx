@@ -1,4 +1,4 @@
-// The Focus screen, from the Bloom fork (decision 0012): the study timer with its module
+// The Focus screen (decision 0012): the study timer with its module
 // chip, this week's focus by day, and by module. Rust works out every number and colour.
 
 import type { CSSProperties } from "react";
