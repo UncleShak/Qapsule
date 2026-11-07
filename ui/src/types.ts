@@ -81,6 +81,8 @@ export interface UiState {
   palette: Palette | null;
   /** Qapsule's calm springs, or livelier ones (decision 0012). */
   motion: Motion;
+  /** A little of the screen shows through the capsule. */
+  translucent: boolean;
 }
 
 export type Motion = "calm" | "lively";
@@ -100,16 +102,40 @@ export interface ExpandedView {
   events: EventsView;
   /** The last notifications that left the screen, newest first. */
   history: HistoryView[];
-  /** The screen showing (decision 0012). */
-  screen: ScreenName;
+  /** The pages the settings show, in order, and the one showing (the overhaul). */
+  pages: PageName[];
+  screen: PageName;
   focus: FocusView;
+  /** The song with its controls, for Home and Music. */
+  music: MusicView | null;
+  system: SystemView;
+  do_not_disturb: boolean;
 }
 
-export type ScreenName = "focus" | "main";
-export const SCREENS: { id: ScreenName; label: string }[] = [
-  { id: "focus", label: "Focus" },
-  { id: "main", label: "Today" },
-];
+export type PageName = "home" | "control" | "focus" | "calendar" | "music";
+export const PAGE_LABELS: Record<PageName, string> = {
+  home: "Home",
+  control: "Control",
+  focus: "Focus",
+  calendar: "Calendar",
+  music: "Music",
+};
+
+/** Mirrors `SystemView` in crates/core/src/view.rs. */
+export interface SystemView {
+  volume: number | null;
+  muted: boolean;
+  battery: { percent: number; charging: boolean } | null;
+  ram: number | null;
+  cpu: number | null;
+}
+
+export interface GoalView {
+  progress: number;
+  done: string;
+  target: string;
+  met: boolean;
+}
 
 export type FocusPhase = "idle" | "running" | "paused" | "done";
 
@@ -152,6 +178,7 @@ export interface FocusView {
   progress: number;
   module: ModuleChip | null;
   stats: StudyStats;
+  goal: GoalView;
 }
 
 export interface HistoryView {

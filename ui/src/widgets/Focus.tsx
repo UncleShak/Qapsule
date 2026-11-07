@@ -10,7 +10,7 @@ export function Focus({ focus }: { focus: FocusView }) {
   return (
     <div className="main-screen focus-screen">
       <Timer focus={focus} />
-      <Week stats={focus.stats} />
+      <Week focus={focus} />
       <Modules stats={focus.stats} />
     </div>
   );
@@ -54,10 +54,10 @@ function Timer({ focus }: { focus: FocusView }) {
           type="button"
           className="module-chip"
           onClick={() => focusModule()}
-          aria-label={`Module: ${focus.module?.code ?? "none"}. Press to change`}
+          aria-label={`Tag: ${focus.module?.code ?? "none"}. Press to change`}
         >
           <span className="module-dot" style={{ background: focus.module?.color ?? "var(--text-4)" }} />
-          <span className="module-code">{focus.module?.code ?? "No module"}</span>
+          <span className="module-code">{focus.module?.code ?? "No tag"}</span>
           <Glyph name="chevron_down" className="module-chevron" />
         </button>
         <div className="focus-controls">
@@ -102,7 +102,8 @@ function Timer({ focus }: { focus: FocusView }) {
   );
 }
 
-function Week({ stats }: { stats: StudyStats }) {
+function Week({ focus }: { focus: FocusView }) {
+  const { stats, goal } = focus;
   return (
     <section className="widget widget-week" aria-label="This week">
       <div className="week-head">
@@ -120,17 +121,19 @@ function Week({ stats }: { stats: StudyStats }) {
           </div>
         ))}
       </div>
-      <span className="widget-caption week-today">Today · {stats.today}</span>
+      <span className="widget-caption week-today">
+        Today · {goal.done} of {goal.target}
+      </span>
     </section>
   );
 }
 
 function Modules({ stats }: { stats: StudyStats }) {
   return (
-    <section className="widget widget-modules" aria-label="Modules this week">
-      <span className="widget-caption">By module</span>
+    <section className="widget widget-modules" aria-label="Tags this week">
+      <span className="widget-caption">By tag</span>
       {stats.modules.length === 0 ? (
-        <span className="widget-note">Start a session and your modules show here.</span>
+        <span className="widget-note">Start a session and your tags show here.</span>
       ) : (
         <ul className="module-rows">
           {stats.modules.map((m, i) => (

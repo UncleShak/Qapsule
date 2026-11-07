@@ -10,7 +10,7 @@ import { Glyph } from "./Glyph";
 
 /** Cover art over a placeholder (a subtle fill with the music glyph). A missing or broken
  *  image just leaves the placeholder showing. */
-function Art({ art, className }: { art: string | null; className: string }) {
+export function Art({ art, className }: { art: string | null; className: string }) {
   // Local presentation state only: which URL failed to load.
   const [failed, setFailed] = useState<string | null>(null);
   return (
@@ -23,7 +23,7 @@ function Art({ art, className }: { art: string | null; className: string }) {
 
 /** The thin accent line along the bottom: where the song is, moving at the song's pace.
  *  A keyframe animation does the moving, so there is no timer; a new state remounts it. */
-function Progress({ music, className = "" }: { music: MusicView; className?: string }) {
+export function Progress({ music, className = "" }: { music: MusicView; className?: string }) {
   const { position_ms: pos, length_ms: len, rate, playing } = music;
   if (pos === null || len === null || len <= 0) return null;
   const done = Math.min(Math.max(pos / len, 0), 1);
@@ -70,6 +70,7 @@ const FRAME = {
   "--m-button": `${F.button}px`,
   "--m-controls-right": `${F.controlsRight}px`,
   "--m-bars-right": `${F.barsRight}px`,
+  "--m-bars-left": `${F.barsLeft}px`,
   "--m-inset-x": `${F.inset}px`,
   "--m-inset-y": `${F.lift}px`,
 } as CSSProperties;
@@ -94,8 +95,9 @@ export function MusicPeek({ music, clock, open }: { music: MusicView; clock: str
           {music.artist || music.app}
         </span>
       </button>
-      {/* The cover's glow, only in the media view: a static blurred copy that fades in. */}
-      {open && music.art && (
+      {/* The cover's glow: a static blurred copy behind it, in the plain pill (the wings)
+          and in the media view. */}
+      {music.art && (
         <span className="music-glow" aria-hidden="true">
           <img src={music.art} alt="" draggable={false} />
         </span>

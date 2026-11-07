@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ScreenName, UiState } from "./types";
+import type { PageName, UiState } from "./types";
 import type { Rect } from "./capsule/geometry";
 
 /** Calls `apply` with the current state, then with every update. Returns an unsubscribe function. */
@@ -42,5 +42,18 @@ export const focusToggle = () => invoke("focus_toggle");
 export const focusReset = () => invoke("focus_reset");
 export const focusLength = (minutes: number) => invoke("focus_length", { minutes });
 export const focusModule = () => invoke("focus_module");
-export const setScreen = (screen: ScreenName) => invoke("set_screen", { screen });
+export const setScreen = (screen: PageName) => invoke("set_screen", { screen });
+
+// The Control page and the dashboard's corner (the overhaul).
+export const setVolume = (level: number) => invoke("set_volume", { level: Math.round(level) });
+export const toggleMute = () => invoke("toggle_mute");
+export type SystemPage =
+  | "ms-settings:network-wifi"
+  | "ms-settings:bluetooth"
+  | "ms-settings:nightlight"
+  | "ms-settings:display"
+  | "ms-settings:batterysaver";
+export const openSystemPage = (page: SystemPage) => invoke("open_system_page", { page });
+export const toggleDnd = () => invoke("toggle_dnd");
+export const openSettings = () => invoke("open_settings");
 export const stepScreen = (delta: number) => invoke("step_screen", { delta });

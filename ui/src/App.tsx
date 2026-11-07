@@ -16,6 +16,10 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.motion = motion;
   }, [motion]);
+  const translucent = state?.translucent ?? false;
+  useEffect(() => {
+    document.documentElement.classList.toggle("translucent", translucent);
+  }, [translucent]);
 
   const expanded = state?.expanded != null;
   // The core decides when to expand; the UI only reports how the pointer moved.

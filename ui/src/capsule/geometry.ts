@@ -91,12 +91,15 @@ export const MUSIC_FRAME = (() => {
     pad: PAD,
     art: ART.hover,
     artScale: ART.plain / ART.hover,
-    artDx: inset + PAD + ART.plain / 2 - (PAD + ART.hover / 2),
+    // The wings (the overhaul): in the plain pill the cover sits on the right, with its
+    // glow, and the bars on the left; the media view brings the cover across to the left.
+    artDx: w - inset - PAD - ART.plain / 2 - (PAD + ART.hover / 2),
     titleLeft,
     titleWidth: controlsLeft - 10 - titleLeft,
     button: BUTTON,
     controlsRight: CONTROLS_PAD,
     barsRight,
+    barsLeft: inset + BARS.pad,
     inset,
     lift,
   };
@@ -113,7 +116,8 @@ export function layout(kind: LayoutKind, hovered = false): Layout {
     return { kind, main, side: main, archX: CENTRE - 12, dual: false };
   }
   if (kind === "expanded") {
-    const main = centred(expandedWidth(windowWidth()), 176, 32, EXPANDED_SHOULDER);
+    // 216 tall: the pages, then the page tabs along the bottom (the overhaul).
+    const main = centred(expandedWidth(windowWidth()), 216, 32, EXPANDED_SHOULDER);
     return { kind, main, side: main, archX: CENTRE - 12, dual: false };
   }
   const dw = hovered ? HOVER.w : 0;

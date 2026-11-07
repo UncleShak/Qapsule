@@ -19,6 +19,15 @@ const GLYPHS: Record<string, string> = {
   timer: "\uE916", // Stopwatch
   restart: "\uE72C", // Refresh
   chevron_down: "\uE70D", // ChevronDown
+  moon: "\uE708", // QuietHours
+  settings: "\uE713", // Setting
+  wifi: "\uE701", // Wifi
+  bluetooth: "\uE702", // Bluetooth
+  volume: "\uE767", // Volume
+  mute: "\uE74F", // Mute
+  brightness: "\uE706", // Brightness
+  battery: "\uE83F", // Battery
+  display: "\uE7F4", // TVMonitor
   // Weather. Segoe Fluent Icons has no weather set, so these are the closest shapes it has.
   clear: "\uE706", // Brightness
   partly_cloudy: "\uE753", // Cloud

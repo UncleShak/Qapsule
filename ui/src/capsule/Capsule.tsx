@@ -99,10 +99,23 @@ function plainGlowBox(state: UiState): Box {
 /** One glow element for one form: the pill's own box and radius (never per shape piece),
  *  a static gradient centred on the cover. It follows the shape by translating; neither the
  *  element nor its gradient is ever scaled. The two forms cross-fade by opacity. */
-function Glow({ form, rest, x, shown }: { form: "plain" | "media"; rest: Box; x: number | null; shown: boolean }) {
+function Glow({
+  form,
+  rest,
+  x,
+  shown,
+  wings = false,
+}: {
+  form: "plain" | "media";
+  rest: Box;
+  x: number | null;
+  shown: boolean;
+  wings?: boolean;
+}) {
   const media = form === "media";
   const cover = media ? MUSIC_FRAME.art : MUSIC_FRAME.art * MUSIC_FRAME.artScale;
-  const cx = MUSIC_FRAME.pad + cover / 2;
+  // The wings (the overhaul): a lone song's cover sits on the right of the plain pill.
+  const cx = wings ? rest.w - MUSIC_FRAME.pad - cover / 2 : MUSIC_FRAME.pad + cover / 2;
   // The media view also has the cover's own glow behind the larger cover: less colour here.
   const strength = media ? 34 : 42;
   return (
@@ -278,7 +291,13 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
               style={{ "--art-tint": tint } as CSSProperties}
               onAnimationEnd={(e: AnimationEvent) => e.target === e.currentTarget && glowDone()}
             >
-              <Glow form="plain" rest={plainGlowBox(state)} x={kind === "music_hover" ? null : l.main.x} shown={kind !== "music_hover"} />
+              <Glow
+                form="plain"
+                rest={plainGlowBox(state)}
+                x={kind === "music_hover" ? null : l.main.x}
+                shown={kind !== "music_hover"}
+                wings={state.peek.kind !== "dual"}
+              />
               <Glow form="media" rest={layout("music_hover").main} x={l.main.x} shown={kind === "music_hover"} />
             </div>
           ))}
