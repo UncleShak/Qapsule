@@ -22,6 +22,11 @@ const COMMANDS: &[&str] = &[
     "focus_module",
     "set_screen",
     "step_screen",
+    "set_volume",
+    "toggle_mute",
+    "open_system_page",
+    "toggle_dnd",
+    "open_settings",
     // The settings window only (capabilities/settings.json).
     "get_appearance",
     "set_appearance",

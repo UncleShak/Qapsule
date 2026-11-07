@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use qapsule_core::{
-    ConnId, Core, Effect, EventsView, MediaState, PaletteView, PresenceEffect, ScreenName,
-    Settings, UiState, WeatherView,
+    ConnId, Core, Effect, EventsView, MediaState, PageName, PaletteView, PresenceEffect, Settings,
+    UiState, WeatherView,
 };
 use qapsule_protocol::{Activity, ClientMessage, ServerMessage};
 use tokio::sync::{mpsc, oneshot};
@@ -90,8 +90,11 @@ enum Command {
     FocusReset,
     FocusLength(u32),
     FocusModule,
-    Screen(ScreenName),
+    Screen(PageName),
     StepScreen(i32),
+    SetVolume(u8),
+    ToggleMute,
+    OpenSystemPage(String),
 }
 
 /// A cheap, cloneable handle to the engine task.
@@ -250,8 +253,22 @@ impl Engine {
     }
 
     /// Show a screen of the expanded view.
-    pub fn screen(&self, screen: ScreenName) {
+    pub fn screen(&self, screen: PageName) {
         self.send(Command::Screen(screen));
+    }
+
+    /// The Control page's volume slider, 0 to 100.
+    pub fn set_volume(&self, level: u8) {
+        self.send(Command::SetVolume(level));
+    }
+
+    pub fn toggle_mute(&self) {
+        self.send(Command::ToggleMute);
+    }
+
+    /// A Control page tile that opens a Windows Settings page (`system::open_settings_page`).
+    pub fn open_system_page(&self, page: String) {
+        self.send(Command::OpenSystemPage(page));
     }
 
     /// One screen left (-1) or right (1).
@@ -267,9 +284,15 @@ impl Engine {
     }
 }
 
+/// How often the Control page's readings refresh while it shows.
+const SYSTEM_SAMPLE_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+
 async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell: impl Shell) {
     let mut conns: HashMap<ConnId, mpsc::UnboundedSender<ServerMessage>> = HashMap::new();
     let mut next_minute = Instant::now();
+    // The Control page's readings: sampled every two seconds while it shows, never otherwise.
+    let mut sampler = system::SystemSampler::default();
+    let mut next_system: Option<Instant> = None;
     // The study log (decision 0012). A file that can't be read leaves an empty log, and the
     // next save replaces it.
     let study = config::study_path();
@@ -289,6 +312,14 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
             next_minute = now + until;
         }
         core.tick(now);
+        if core.wants_system() {
+            if next_system.is_none_or(|at| now >= at) {
+                core.set_system(sampler.sample(), now);
+                next_system = Some(now + SYSTEM_SAMPLE_EVERY);
+            }
+        } else {
+            next_system = None;
+        }
         // Like presence, a provider signal and not a webview update.
         if let Some(visible) = core.take_main_screen() {
             shell.main_screen(visible);
@@ -311,6 +342,7 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
         let deadline = core
             .next_deadline()
             .map_or(next_minute, |d| d.min(next_minute));
+        let deadline = next_system.map_or(deadline, |s| s.min(deadline));
 
         let command = tokio::select! {
             command = rx.recv() => match command {
@@ -389,6 +421,17 @@ async fn run(mut core: Core, mut rx: mpsc::UnboundedReceiver<Command>, mut shell
             Command::FocusModule => core.focus_cycle_module(now),
             Command::Screen(screen) => core.set_screen(screen, now),
             Command::StepScreen(delta) => core.step_screen(delta, now),
+            Command::SetVolume(level) => {
+                system::set_volume(level);
+                next_system = None;
+            }
+            Command::ToggleMute => {
+                system::toggle_mute();
+                next_system = None;
+            }
+            Command::OpenSystemPage(page) => {
+                system::open_settings_page(&page);
+            }
         }
     }
 }

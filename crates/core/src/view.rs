@@ -4,7 +4,7 @@ use qapsule_protocol::{Action, ActionKind, Activity, Progress, State};
 use serde::Serialize;
 
 use crate::focus::FocusView;
-use crate::settings::{Motion, VisibilityMode};
+use crate::settings::{Motion, PageName, VisibilityMode};
 
 /// A full description of the screen. Sent whole on every update.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -28,6 +28,8 @@ pub struct UiState {
     pub palette: Option<PaletteView>,
     /// `[appearance] motion`: Qapsule's calm springs, or livelier ones.
     pub motion: Motion,
+    /// `[appearance] translucent`: a little of the screen shows through the capsule.
+    pub translucent: bool,
 }
 
 /// Where the palette came from.
@@ -62,31 +64,37 @@ pub struct ExpandedView {
     pub events: EventsView,
     /// The last notifications that left the screen, newest first (decision 0009).
     pub history: Vec<HistoryView>,
-    /// The screen showing: Focus on the left, or the main screen (decision 0012).
-    pub screen: ScreenName,
-    /// The Focus screen's timer and study numbers.
+    /// The pages the settings show, in order (the overhaul).
+    pub pages: Vec<PageName>,
+    /// The page showing.
+    pub screen: PageName,
+    /// The Focus page's timer and study numbers, and the goal ring on Home.
     pub focus: FocusView,
+    /// The song, with its controls, for Home and the Music page.
+    pub music: Option<MusicView>,
+    /// The Control page's readings; empty until the first sample arrives.
+    pub system: SystemView,
+    pub do_not_disturb: bool,
 }
 
-/// The screens of the expanded view, left to right.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ScreenName {
-    Focus,
-    #[default]
-    Main,
+/// What the Control page shows. Every reading is optional: a desktop has no battery,
+/// and a reading that failed just leaves its row out.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct SystemView {
+    /// 0 to 100.
+    pub volume: Option<u8>,
+    pub muted: bool,
+    pub battery: Option<BatteryView>,
+    /// Memory in use, 0 to 100.
+    pub ram: Option<u8>,
+    /// Processor busy since the last sample, 0 to 100.
+    pub cpu: Option<u8>,
 }
 
-impl ScreenName {
-    pub const ALL: [ScreenName; 2] = [ScreenName::Focus, ScreenName::Main];
-
-    pub fn parse(text: &str) -> Option<Self> {
-        match text {
-            "focus" => Some(ScreenName::Focus),
-            "main" => Some(ScreenName::Main),
-            _ => None,
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct BatteryView {
+    pub percent: u8,
+    pub charging: bool,
 }
 
 /// One notification that has left the screen, as the history lists it.

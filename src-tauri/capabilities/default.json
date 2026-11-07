@@ -24,6 +24,11 @@
     "allow-focus-length",
     "allow-focus-module",
     "allow-set-screen",
-    "allow-step-screen"
+    "allow-step-screen",
+    "allow-set-volume",
+    "allow-toggle-mute",
+    "allow-open-system-page",
+    "allow-toggle-dnd",
+    "allow-open-settings"
   ]
 }

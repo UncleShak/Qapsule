@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-toggle-dnd"
+description = "Enables the toggle_dnd command without any pre-configured scope."
+commands.allow = ["toggle_dnd"]
+
+[[permission]]
+identifier = "deny-toggle-dnd"
+description = "Denies the toggle_dnd command without any pre-configured scope."
+commands.deny = ["toggle_dnd"]

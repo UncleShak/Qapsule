@@ -19,17 +19,17 @@ use qapsule_protocol::{
     is_reserved_source,
 };
 
-pub use focus::{FocusPhase, FocusView, ModuleChip, StudyStats};
+pub use focus::{FocusPhase, FocusView, GoalView, ModuleChip, StudyStats};
 pub use media::{MediaState, Timeline};
 pub use presence::{Presence, PresenceEffect};
-pub use settings::{AccentSource, Motion, PopSetting, Settings, VisibilityMode};
+pub use settings::{AccentSource, Motion, OpenOn, PageName, PopSetting, Settings, VisibilityMode};
 pub use settings::{ExpandOn, Hotkey, HotkeyKey, Screen, WidgetConfig, WidgetKind, WidgetSize};
 pub use store::{Entry, Key, Store};
 pub use timing::{Coalescer, RateLimiter};
 pub use view::{
-    ActionView, EventDay, EventHead, EventRow, EventsReady, EventsView, ExpandedView, HistoryView,
-    HourView, ItemView, MusicView, PaletteSource, PaletteView, Peek, PeekItem, PopView, ScreenName,
-    UiState, WeatherReady, WeatherTone, WeatherView,
+    ActionView, BatteryView, EventDay, EventHead, EventRow, EventsReady, EventsView, ExpandedView,
+    HistoryView, HourView, ItemView, MusicView, PaletteSource, PaletteView, Peek, PeekItem,
+    PopView, SystemView, UiState, WeatherReady, WeatherTone, WeatherView,
 };
 
 /// Identifies one pipe connection.
@@ -159,6 +159,8 @@ pub struct Core {
     presence: Presence,
     /// The focus timer and the study log (decision 0012).
     focus: focus::Focus,
+    /// The Control page's latest readings.
+    system: SystemView,
 }
 
 impl Core {
@@ -190,6 +192,7 @@ impl Core {
             coalescer: Coalescer::new(UI_UPDATE_INTERVAL),
             presence: Presence::new(),
             focus: focus::Focus::default(),
+            system: SystemView::default(),
         };
         core.coalescer.mark(now);
         core
@@ -811,8 +814,15 @@ impl Core {
                 weather: self.weather.clone(),
                 events: self.events.clone(),
                 history: self.history.iter().map(|h| h.view.clone()).collect(),
-                screen: self.expanded.screen,
-                focus: self.focus.view(now),
+                pages: self.settings.pages.clone(),
+                screen: self.current_page(),
+                focus: self.focus.view(self.settings.daily_goal_min, now),
+                music: self.media.as_ref().map(|m| {
+                    let details = self.settings.pop_setting(media::SOURCE).details;
+                    media::music_view(m, true, details, now)
+                }),
+                system: self.system.clone(),
+                do_not_disturb: self.settings.do_not_disturb,
             }),
             focus: self.expanded.is_pinned(),
             music_tint: self.music_tint.as_ref().map(|(c, _)| c.clone()),
@@ -823,7 +833,24 @@ impl Core {
                 p
             }),
             motion: self.settings.motion,
+            translucent: self.settings.translucent,
         }
+    }
+
+    /// New readings for the Control page, from the engine.
+    pub fn set_system(&mut self, system: SystemView, now: Instant) {
+        if self.system != system {
+            self.system = system;
+            if self.expanded.is_open() {
+                self.coalescer.mark(now);
+            }
+        }
+    }
+
+    /// Whether the Control page is showing, so the engine samples the system (every two
+    /// seconds) only while someone can see the numbers.
+    pub fn wants_system(&self) -> bool {
+        self.expanded.is_open() && self.current_page() == PageName::Control
     }
 
     /// The theme provider has new colours (or none: the UI wears its defaults). Only a

@@ -7,8 +7,9 @@ use std::time::Instant;
 use qapsule_protocol::State;
 
 use crate::settings::ExpandOn;
-use crate::view::{EventsView, ScreenName, WeatherView};
-use crate::{COLLAPSE_GRACE, Core, EXPAND_DWELL, EXPAND_INTENT_DELAY, POP_DURATION, UNDO_DURATION};
+use crate::settings::{OpenOn, PageName};
+use crate::view::{EventsView, WeatherView};
+use crate::{COLLAPSE_GRACE, Core, EXPAND_INTENT_DELAY, POP_DURATION, UNDO_DURATION};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum Open {
@@ -30,8 +31,8 @@ pub(crate) struct Expanded {
     /// Esc or the hotkey closed the view with the pointer over it: hovering doesn't
     /// open it again until the pointer has left.
     suppressed: bool,
-    /// The screen showing. Kept while the view is closed, so it opens where it was left.
-    pub(crate) screen: ScreenName,
+    /// The page showing. Kept while the view is closed, so it opens where it was left.
+    pub(crate) screen: PageName,
 }
 
 impl Expanded {
@@ -80,7 +81,9 @@ impl Core {
     pub(crate) fn expanded_pointer_entered(&mut self, now: Instant) {
         self.expanded.collapse_at = None;
         if self.can_hover_open() {
-            let at = now + EXPAND_DWELL;
+            // `[general] hover_delay_ms`: the dwell before hover opens the view.
+            let at =
+                now + std::time::Duration::from_millis(u64::from(self.settings.hover_delay_ms));
             self.expanded.expand_at = Some(self.expanded.expand_at.map_or(at, |e| e.min(at)));
         }
     }
@@ -141,6 +144,9 @@ impl Core {
         // The media view gives way to the expanded view.
         self.media_open = false;
         self.media_close_at = None;
+        if self.settings.open_on == OpenOn::Home {
+            self.expanded.screen = self.settings.pages.first().copied().unwrap_or_default();
+        }
         self.expanded.open = how;
         self.expanded.expand_at = None;
         self.expanded.collapse_at = None;
@@ -203,23 +209,34 @@ impl Core {
         false
     }
 
-    /// Shows a screen of the expanded view.
-    pub fn set_screen(&mut self, screen: ScreenName, now: Instant) {
-        if self.expanded.screen != screen {
+    /// The page showing: the one last chosen if the settings still show it, else the first.
+    pub(crate) fn current_page(&self) -> PageName {
+        let pages = &self.settings.pages;
+        if pages.contains(&self.expanded.screen) {
+            self.expanded.screen
+        } else {
+            pages.first().copied().unwrap_or_default()
+        }
+    }
+
+    /// Shows a page of the expanded view, if the settings show it.
+    pub fn set_screen(&mut self, screen: PageName, now: Instant) {
+        if self.settings.pages.contains(&screen) && self.current_page() != screen {
             self.expanded.screen = screen;
             self.coalescer.mark(now);
         }
     }
 
-    /// Moves one screen left (`-1`) or right (`1`), stopping at the ends.
+    /// Moves one page left (`-1`) or right (`1`), stopping at the ends.
     pub fn step_screen(&mut self, delta: i32, now: Instant) {
-        let all = ScreenName::ALL;
-        let at = all
-            .iter()
-            .position(|s| *s == self.expanded.screen)
-            .unwrap_or(0) as i32;
-        let next = (at + delta).clamp(0, all.len() as i32 - 1) as usize;
-        self.set_screen(all[next], now);
+        let pages = self.settings.pages.clone();
+        if pages.is_empty() {
+            return;
+        }
+        let current = self.current_page();
+        let at = pages.iter().position(|p| *p == current).unwrap_or(0) as i32;
+        let next = (at + delta).clamp(0, pages.len() as i32 - 1) as usize;
+        self.set_screen(pages[next], now);
     }
 
     /// Whether the main screen opened or closed since the last call: `Some(open)`

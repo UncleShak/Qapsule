@@ -12,7 +12,7 @@ mod window;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use qapsule_core::{Effect, PresenceEffect, ScreenName, Settings, UiState, VisibilityMode};
+use qapsule_core::{Effect, PageName, PresenceEffect, Settings, UiState, VisibilityMode};
 use qapsule_providers::calendar::{Calendar, CalendarConfig};
 use qapsule_providers::colour::ColorRules;
 use qapsule_providers::media::{ArtStore, Media, SCHEME as ART_SCHEME};
@@ -193,9 +193,37 @@ fn focus_module(state: State<'_, AppState>) {
 
 #[tauri::command]
 fn set_screen(state: State<'_, AppState>, screen: String) {
-    if let Some(screen) = ScreenName::parse(&screen) {
+    if let Some(screen) = PageName::parse(&screen) {
         state.engine.screen(screen);
     }
+}
+
+// The Control page and the dashboard's corner buttons (the overhaul).
+
+#[tauri::command]
+fn set_volume(state: State<'_, AppState>, level: u8) {
+    state.engine.set_volume(level.min(100));
+}
+
+#[tauri::command]
+fn toggle_mute(state: State<'_, AppState>) {
+    state.engine.toggle_mute();
+}
+
+/// Only the fixed set of Settings pages in `system::open_settings_page` opens.
+#[tauri::command]
+fn open_system_page(state: State<'_, AppState>, page: String) {
+    state.engine.open_system_page(page);
+}
+
+#[tauri::command]
+fn toggle_dnd(app: AppHandle) {
+    user_change(&app, |s| Change::DoNotDisturb(!s.do_not_disturb));
+}
+
+#[tauri::command]
+async fn open_settings(app: AppHandle) {
+    settings_window::open(&app);
 }
 
 #[tauri::command]
@@ -500,6 +528,11 @@ pub fn run() {
             focus_module,
             set_screen,
             step_screen,
+            set_volume,
+            toggle_mute,
+            open_system_page,
+            toggle_dnd,
+            open_settings,
             settings_window::get_appearance,
             settings_window::set_appearance
         ])

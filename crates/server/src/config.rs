@@ -4,7 +4,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use qapsule_core::{AccentSource, Motion, Settings, VisibilityMode};
+use qapsule_core::settings::{GOAL_MINUTES, MAX_HOVER_DELAY_MS};
+use qapsule_core::{AccentSource, ExpandOn, Motion, OpenOn, PageName, Settings, VisibilityMode};
 use serde::{Deserialize, Serialize};
 use toml_edit::{DocumentMut, Item, Table, value};
 
@@ -71,7 +72,8 @@ pub fn save_do_not_disturb(path: &Path, on: bool) -> io::Result<()> {
     edit(path, vec![("notifications", "do_not_disturb", value(on))])
 }
 
-/// The `[appearance]` settings, as the settings window shows them.
+/// The settings the settings window shows: `[appearance]`, plus the pages, the hover
+/// delay and the focus goal from their own sections.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Appearance {
     pub accent_source: AccentSource,
@@ -79,6 +81,12 @@ pub struct Appearance {
     pub wallpaper_tint: bool,
     pub music_tint: bool,
     pub motion: Motion,
+    pub translucent: bool,
+    pub pages: Vec<PageName>,
+    pub open_on: OpenOn,
+    pub expand_on: ExpandOn,
+    pub hover_delay_ms: u32,
+    pub daily_goal_min: u32,
 }
 
 impl Appearance {
@@ -89,6 +97,12 @@ impl Appearance {
             wallpaper_tint: settings.wallpaper_tint,
             music_tint: settings.music_tint,
             motion: settings.motion,
+            translucent: settings.translucent,
+            pages: settings.pages.clone(),
+            open_on: settings.open_on,
+            expand_on: settings.expand_on,
+            hover_delay_ms: settings.hover_delay_ms,
+            daily_goal_min: settings.daily_goal_min,
         }
     }
 }
@@ -101,6 +115,12 @@ pub struct AppearancePatch {
     pub wallpaper_tint: Option<bool>,
     pub music_tint: Option<bool>,
     pub motion: Option<Motion>,
+    pub translucent: Option<bool>,
+    pub pages: Option<Vec<PageName>>,
+    pub open_on: Option<OpenOn>,
+    pub expand_on: Option<ExpandOn>,
+    pub hover_delay_ms: Option<u32>,
+    pub daily_goal_min: Option<u32>,
 }
 
 impl AppearancePatch {
@@ -112,6 +132,36 @@ impl AppearancePatch {
             self.custom_accent = Some(
                 normalise(text).ok_or_else(|| "that isn't a colour like #60CDFF".to_string())?,
             );
+        }
+        if let Some(pages) = &mut self.pages {
+            let mut unique: Vec<PageName> = Vec::new();
+            for page in pages.iter() {
+                if !unique.contains(page) {
+                    unique.push(*page);
+                }
+            }
+            if unique.is_empty() {
+                return Err("keep at least one page".into());
+            }
+            *pages = unique;
+        }
+        if self
+            .hover_delay_ms
+            .is_some_and(|ms| ms > MAX_HOVER_DELAY_MS)
+        {
+            return Err(format!(
+                "the hover delay is at most {MAX_HOVER_DELAY_MS} ms"
+            ));
+        }
+        if self
+            .daily_goal_min
+            .is_some_and(|m| !GOAL_MINUTES.contains(&m))
+        {
+            return Err(format!(
+                "the daily goal is from {} to {} minutes",
+                GOAL_MINUTES.start(),
+                GOAL_MINUTES.end()
+            ));
         }
         Ok(self)
     }
@@ -132,6 +182,24 @@ impl AppearancePatch {
         if let Some(motion) = self.motion {
             settings.motion = motion;
         }
+        if let Some(on) = self.translucent {
+            settings.translucent = on;
+        }
+        if let Some(pages) = &self.pages {
+            settings.pages = pages.clone();
+        }
+        if let Some(open_on) = self.open_on {
+            settings.open_on = open_on;
+        }
+        if let Some(expand_on) = self.expand_on {
+            settings.expand_on = expand_on;
+        }
+        if let Some(ms) = self.hover_delay_ms {
+            settings.hover_delay_ms = ms;
+        }
+        if let Some(minutes) = self.daily_goal_min {
+            settings.daily_goal_min = minutes;
+        }
     }
 
     /// This patch with `newer` laid on top: the newer value of each field wins.
@@ -141,6 +209,12 @@ impl AppearancePatch {
         self.wallpaper_tint = newer.wallpaper_tint.or(self.wallpaper_tint);
         self.music_tint = newer.music_tint.or(self.music_tint);
         self.motion = newer.motion.or(self.motion);
+        self.translucent = newer.translucent.or(self.translucent);
+        self.pages = newer.pages.clone().or(self.pages);
+        self.open_on = newer.open_on.or(self.open_on);
+        self.expand_on = newer.expand_on.or(self.expand_on);
+        self.hover_delay_ms = newer.hover_delay_ms.or(self.hover_delay_ms);
+        self.daily_goal_min = newer.daily_goal_min.or(self.daily_goal_min);
         self
     }
 }
@@ -167,6 +241,25 @@ pub fn save_appearance(path: &Path, patch: &AppearancePatch) -> io::Result<()> {
     }
     if let Some(motion) = patch.motion {
         edits.push(("appearance", "motion", value(motion.as_str())));
+    }
+    if let Some(on) = patch.translucent {
+        edits.push(("appearance", "translucent", value(on)));
+    }
+    if let Some(pages) = &patch.pages {
+        let list: toml_edit::Array = pages.iter().map(|p| p.as_str()).collect();
+        edits.push(("pages", "show", value(list)));
+    }
+    if let Some(open_on) = patch.open_on {
+        edits.push(("pages", "open_on", value(open_on.as_str())));
+    }
+    if let Some(expand_on) = patch.expand_on {
+        edits.push(("general", "expand_on", value(expand_on.as_str())));
+    }
+    if let Some(ms) = patch.hover_delay_ms {
+        edits.push(("general", "hover_delay_ms", value(i64::from(ms))));
+    }
+    if let Some(minutes) = patch.daily_goal_min {
+        edits.push(("focus", "daily_goal_min", value(i64::from(minutes))));
     }
     if edits.is_empty() {
         return Ok(());

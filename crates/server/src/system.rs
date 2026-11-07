@@ -233,3 +233,163 @@ mod tests {
         assert!(until <= Duration::from_secs(60));
     }
 }
+
+// The Control page's readings and controls (the overhaul): volume through Core Audio,
+// battery, memory and processor through plain Win32. Sampled every two seconds, only
+// while the Control page shows.
+
+use qapsule_core::{BatteryView, SystemView};
+use windows::Win32::Foundation::FILETIME;
+use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
+use windows::Win32::Media::Audio::{IMMDeviceEnumerator, MMDeviceEnumerator, eMultimedia, eRender};
+use windows::Win32::System::Com::{
+    CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
+};
+use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+use windows::Win32::System::Threading::GetSystemTimes;
+
+/// The default output device's volume control.
+fn endpoint_volume() -> Option<IAudioEndpointVolume> {
+    unsafe {
+        // Joins the thread to COM if it isn't already; a repeat call is harmless.
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let devices: IMMDeviceEnumerator =
+            CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok()?;
+        let device = devices.GetDefaultAudioEndpoint(eRender, eMultimedia).ok()?;
+        device
+            .Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None)
+            .ok()
+    }
+}
+
+/// Sets the output volume, 0 to 100.
+pub fn set_volume(level: u8) {
+    if let Some(volume) = endpoint_volume() {
+        let scalar = f32::from(level.min(100)) / 100.0;
+        unsafe {
+            let _ = volume.SetMasterVolumeLevelScalar(scalar, std::ptr::null());
+            if level > 0 {
+                let _ = volume.SetMute(false, std::ptr::null());
+            }
+        }
+    }
+}
+
+/// Mutes or unmutes the output.
+pub fn toggle_mute() {
+    if let Some(volume) = endpoint_volume() {
+        unsafe {
+            if let Ok(muted) = volume.GetMute() {
+                let _ = volume.SetMute(!muted.as_bool(), std::ptr::null());
+            }
+        }
+    }
+}
+
+/// Opens one of a fixed set of Windows Settings pages. Anything else is ignored.
+pub fn open_settings_page(page: &str) -> bool {
+    const PAGES: [&str; 5] = [
+        "ms-settings:network-wifi",
+        "ms-settings:bluetooth",
+        "ms-settings:nightlight",
+        "ms-settings:display",
+        "ms-settings:batterysaver",
+    ];
+    if !PAGES.contains(&page) {
+        return false;
+    }
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            w!("open"),
+            &HSTRING::from(page),
+            None,
+            None,
+            SW_SHOWNORMAL,
+        )
+    };
+    result.0 as usize > 32
+}
+
+fn ticks(t: FILETIME) -> u64 {
+    (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime)
+}
+
+/// Reads the system for the Control page. Keeps the last processor times, since busy
+/// is measured between two samples.
+#[derive(Debug, Default)]
+pub struct SystemSampler {
+    last: Option<(u64, u64)>,
+}
+
+impl SystemSampler {
+    pub fn sample(&mut self) -> SystemView {
+        let (volume, muted) = match endpoint_volume() {
+            Some(v) => unsafe {
+                (
+                    v.GetMasterVolumeLevelScalar()
+                        .ok()
+                        .map(|x| (x * 100.0).round().clamp(0.0, 100.0) as u8),
+                    v.GetMute().map(|m| m.as_bool()).unwrap_or(false),
+                )
+            },
+            None => (None, false),
+        };
+        SystemView {
+            volume,
+            muted,
+            battery: battery(),
+            ram: ram(),
+            cpu: self.cpu(),
+        }
+    }
+
+    fn cpu(&mut self) -> Option<u8> {
+        let (mut idle, mut kernel, mut user) = (
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+        );
+        unsafe {
+            GetSystemTimes(
+                Some(&raw mut idle),
+                Some(&raw mut kernel),
+                Some(&raw mut user),
+            )
+        }
+        .ok()?;
+        // Kernel time includes idle time.
+        let (idle, total) = (ticks(idle), ticks(kernel) + ticks(user));
+        let last = self.last.replace((idle, total));
+        let (last_idle, last_total) = last?;
+        let span = total.checked_sub(last_total)?;
+        if span == 0 {
+            return None;
+        }
+        let busy = span.saturating_sub(idle.saturating_sub(last_idle));
+        Some(((busy * 100) / span).min(100) as u8)
+    }
+}
+
+fn battery() -> Option<BatteryView> {
+    let mut status = SYSTEM_POWER_STATUS::default();
+    unsafe { GetSystemPowerStatus(&mut status) }.ok()?;
+    // 128: no battery; 255: unknown.
+    if status.BatteryFlag & 128 != 0 || status.BatteryLifePercent > 100 {
+        return None;
+    }
+    Some(BatteryView {
+        percent: status.BatteryLifePercent,
+        charging: status.ACLineStatus == 1,
+    })
+}
+
+fn ram() -> Option<u8> {
+    let mut status = MEMORYSTATUSEX {
+        dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+        ..Default::default()
+    };
+    unsafe { GlobalMemoryStatusEx(&mut status) }.ok()?;
+    Some(status.dwMemoryLoad.min(100) as u8)
+}

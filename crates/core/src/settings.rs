@@ -86,6 +86,82 @@ impl AccentSource {
     }
 }
 
+/// A page of the expanded view (the overhaul). The settings choose which show, in order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PageName {
+    #[default]
+    Home,
+    Control,
+    Focus,
+    Calendar,
+    Music,
+}
+
+impl PageName {
+    pub const ALL: [PageName; 5] = [
+        PageName::Home,
+        PageName::Control,
+        PageName::Focus,
+        PageName::Calendar,
+        PageName::Music,
+    ];
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "home" => Some(PageName::Home),
+            "control" => Some(PageName::Control),
+            "focus" => Some(PageName::Focus),
+            "calendar" => Some(PageName::Calendar),
+            "music" => Some(PageName::Music),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PageName::Home => "home",
+            PageName::Control => "control",
+            PageName::Focus => "focus",
+            PageName::Calendar => "calendar",
+            PageName::Music => "music",
+        }
+    }
+}
+
+/// Which page the expanded view opens on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OpenOn {
+    /// The page it was last left on.
+    #[default]
+    Last,
+    /// Always Home (or the first page shown).
+    Home,
+}
+
+impl OpenOn {
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "last" => Some(OpenOn::Last),
+            "home" => Some(OpenOn::Home),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OpenOn::Last => "last",
+            OpenOn::Home => "home",
+        }
+    }
+}
+
+/// The longest hover wait before the view opens, in milliseconds.
+pub const MAX_HOVER_DELAY_MS: u32 = 1000;
+/// The daily focus goal's bounds, in minutes.
+pub const GOAL_MINUTES: std::ops::RangeInclusive<u32> = 15..=1440;
+
 /// What opens the expanded view from the peek.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -98,6 +174,13 @@ pub enum ExpandOn {
 }
 
 impl ExpandOn {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ExpandOn::Hover => "hover",
+            ExpandOn::Click => "click",
+        }
+    }
+
     pub fn parse(text: &str) -> Option<Self> {
         match text {
             "hover" => Some(ExpandOn::Hover),
@@ -352,6 +435,16 @@ pub struct Settings {
     pub wallpaper_tint: bool,
     /// `[appearance] motion`: calm or lively springs.
     pub motion: Motion,
+    /// `[appearance] translucent`: let a little of the screen show through the capsule.
+    pub translucent: bool,
+    /// `[pages] show`: the pages of the expanded view, in order. Never empty.
+    pub pages: Vec<PageName>,
+    /// `[pages] open_on`: the last page, or Home.
+    pub open_on: OpenOn,
+    /// `[general] hover_delay_ms`: how long the pointer rests before hover opens the view.
+    pub hover_delay_ms: u32,
+    /// `[focus] daily_goal_min`: today's focus goal, for the ring on Home and Focus.
+    pub daily_goal_min: u32,
     pub do_not_disturb: bool,
     /// Keyed by source name (`claude-code`) or category (`agents`, `commands`).
     pub notifications: HashMap<String, PopSetting>,
@@ -377,6 +470,11 @@ impl Default for Settings {
             custom_accent: "#60CDFF".to_string(),
             wallpaper_tint: true,
             motion: Motion::Lively,
+            translucent: false,
+            pages: PageName::ALL.to_vec(),
+            open_on: OpenOn::Last,
+            hover_delay_ms: 180,
+            daily_goal_min: 240,
             do_not_disturb: false,
             notifications: HashMap::new(),
             expand_on: ExpandOn::Click,
@@ -456,6 +554,16 @@ impl Settings {
                     )),
                 }
             }
+            if let Some(value) = general.get("hover_delay_ms") {
+                match value.as_integer() {
+                    Some(ms) if (0..=i64::from(MAX_HOVER_DELAY_MS)).contains(&ms) => {
+                        settings.hover_delay_ms = ms as u32
+                    }
+                    _ => warnings.push(format!(
+                        "general.hover_delay_ms must be a whole number from 0 to {MAX_HOVER_DELAY_MS}, not {value}"
+                    )),
+                }
+            }
             if let Some(value) = general.get("expand_on") {
                 match value.as_str().and_then(ExpandOn::parse) {
                     Some(mode) => settings.expand_on = mode,
@@ -509,6 +617,13 @@ impl Settings {
                     )),
                 }
             }
+            read_bool(
+                appearance,
+                "appearance.translucent",
+                "translucent",
+                &mut settings.translucent,
+                &mut warnings,
+            );
             if let Some(value) = appearance.get("motion") {
                 match value.as_str().and_then(Motion::parse) {
                     Some(motion) => settings.motion = motion,
@@ -579,6 +694,38 @@ impl Settings {
                         "calendar.colors.\"{keyword}\" must be text like \"#7AA2F7\", not {value}"
                     )),
                 }
+            }
+        }
+        if let Some(pages) = section(&table, "pages", &mut warnings) {
+            if let Some(value) = pages.get("show") {
+                match read_pages(value) {
+                    Some(list) => settings.pages = list,
+                    None => warnings.push(format!(
+                        "pages.show must list one or more of \"home\", \"control\", \"focus\", \"calendar\", \"music\", not {value}"
+                    )),
+                }
+            }
+            if let Some(value) = pages.get("open_on") {
+                match value.as_str().and_then(OpenOn::parse) {
+                    Some(open_on) => settings.open_on = open_on,
+                    None => warnings.push(format!(
+                        "pages.open_on must be \"last\" or \"home\", not {value}"
+                    )),
+                }
+            }
+        }
+        if let Some(focus) = section(&table, "focus", &mut warnings)
+            && let Some(value) = focus.get("daily_goal_min")
+        {
+            match value.as_integer() {
+                Some(m) if GOAL_MINUTES.contains(&(m.clamp(0, i64::from(u32::MAX)) as u32)) => {
+                    settings.daily_goal_min = m as u32
+                }
+                _ => warnings.push(format!(
+                    "focus.daily_goal_min must be a whole number of minutes from {} to {}, not {value}",
+                    GOAL_MINUTES.start(),
+                    GOAL_MINUTES.end()
+                )),
             }
         }
         if let Some(value) = table.get("screens") {
@@ -683,6 +830,18 @@ fn read_widget(value: &Value, path: &str, warnings: &mut Vec<String>) -> Option<
         }
     };
     Some(WidgetConfig { kind, size, city })
+}
+
+/// A list of page names with no repeats, or `None` if it isn't one or is empty.
+fn read_pages(value: &Value) -> Option<Vec<PageName>> {
+    let mut pages = Vec::new();
+    for item in value.as_array()? {
+        let page = PageName::parse(item.as_str()?)?;
+        if !pages.contains(&page) {
+            pages.push(page);
+        }
+    }
+    (!pages.is_empty()).then_some(pages)
 }
 
 fn section<'a>(table: &'a Table, name: &str, warnings: &mut Vec<String>) -> Option<&'a Table> {

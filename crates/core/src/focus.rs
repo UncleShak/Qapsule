@@ -143,6 +143,20 @@ pub struct FocusView {
     pub progress: f64,
     pub module: Option<ModuleChip>,
     pub stats: StudyStats,
+    /// Today against the daily goal.
+    pub goal: GoalView,
+}
+
+/// Today's focus against `[focus] daily_goal_min`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct GoalView {
+    /// 0 to 1, full once the goal is met.
+    pub progress: f64,
+    /// `2 h 10 min`
+    pub done: String,
+    /// `4 h`
+    pub target: String,
+    pub met: bool,
 }
 
 #[derive(Debug)]
@@ -473,7 +487,7 @@ impl Focus {
         COLOURS[index % COLOURS.len()].to_string()
     }
 
-    pub(crate) fn view(&self, now: Instant) -> FocusView {
+    pub(crate) fn view(&self, goal_min: u32, now: Instant) -> FocusView {
         let phase = match self.phase {
             Phase::Idle => FocusPhase::Idle,
             Phase::Running { .. } => FocusPhase::Running,
@@ -495,6 +509,22 @@ impl Focus {
             progress: self.progress(now),
             module: self.module.as_deref().map(|m| self.chip(m)),
             stats: self.stats(now),
+            goal: self.goal(goal_min, now),
+        }
+    }
+
+    fn goal(&self, goal_min: u32, now: Instant) -> GoalView {
+        let done = self
+            .live_log(now)
+            .days
+            .get(&self.day)
+            .map_or(0, StudyDay::total);
+        let target = u64::from(goal_min.max(1)) * 60;
+        GoalView {
+            progress: (done as f64 / target as f64).clamp(0.0, 1.0),
+            done: duration_text(done),
+            target: duration_text(target),
+            met: done >= target,
         }
     }
 
@@ -669,7 +699,7 @@ impl crate::Core {
         if self.settings.do_not_disturb || !self.settings.pop_setting(SOURCE).pop {
             return;
         }
-        let minutes = self.focus.view(now).length_min;
+        let minutes = self.focus.view_length();
         let detail = match self.focus.module() {
             Some(m) => format!("{m} · {minutes} min"),
             None => format!("{minutes} min"),

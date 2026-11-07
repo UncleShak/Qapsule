@@ -3250,21 +3250,117 @@ fn the_study_log_loads_back_and_feeds_the_week() {
 }
 
 #[test]
-fn the_expanded_view_steps_between_screens_and_remembers_the_last() {
+fn the_expanded_view_steps_between_pages_and_remembers_the_last() {
     let clock = Clock::new();
     let mut core = focus_core(&clock);
     core.toggle_expanded(clock.now());
     let screen = |core: &Core| core.snapshot(clock.now()).expanded.map(|e| e.screen);
-    assert_eq!(screen(&core), Some(ScreenName::Main));
+    assert_eq!(screen(&core), Some(PageName::Home));
     core.step_screen(-1, clock.now());
-    assert_eq!(screen(&core), Some(ScreenName::Focus));
-    core.step_screen(-1, clock.now());
-    assert_eq!(screen(&core), Some(ScreenName::Focus), "stops at the end");
+    assert_eq!(screen(&core), Some(PageName::Home), "stops at the start");
+    core.step_screen(1, clock.now());
+    assert_eq!(screen(&core), Some(PageName::Control));
     core.close_expanded(clock.now());
     core.toggle_expanded(clock.now());
-    assert_eq!(screen(&core), Some(ScreenName::Focus));
-    core.set_screen(ScreenName::Main, clock.now());
-    assert_eq!(screen(&core), Some(ScreenName::Main));
+    assert_eq!(
+        screen(&core),
+        Some(PageName::Control),
+        "opens where it was left"
+    );
+    core.set_screen(PageName::Music, clock.now());
+    assert_eq!(screen(&core), Some(PageName::Music));
+}
+
+#[test]
+fn the_settings_choose_the_pages_their_order_and_where_the_view_opens() {
+    let clock = Clock::new();
+    let (settings, warnings) = Settings::from_toml(
+        "[pages]\nshow = [\"focus\", \"home\", \"focus\"]\nopen_on = \"home\"\n[general]\nhover_delay_ms = 400\n[focus]\ndaily_goal_min = 120\n",
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        settings.pages,
+        vec![PageName::Focus, PageName::Home],
+        "repeats dropped"
+    );
+    assert_eq!(settings.open_on, OpenOn::Home);
+    assert_eq!(settings.hover_delay_ms, 400);
+    assert_eq!(settings.daily_goal_min, 120);
+    let (_, warnings) = Settings::from_toml("[pages]\nshow = []\n[focus]\ndaily_goal_min = 3\n");
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+
+    let mut core = Core::new(settings, clock.now());
+    core.toggle_expanded(clock.now());
+    let expanded = core.snapshot(clock.now()).expanded.expect("open");
+    assert_eq!(expanded.pages, vec![PageName::Focus, PageName::Home]);
+    assert_eq!(
+        expanded.screen,
+        PageName::Focus,
+        "Home means the first page shown"
+    );
+    core.set_screen(PageName::Control, clock.now());
+    assert_eq!(
+        core.snapshot(clock.now()).expanded.map(|e| e.screen),
+        Some(PageName::Focus),
+        "a hidden page can't be shown"
+    );
+    core.step_screen(1, clock.now());
+    core.close_expanded(clock.now());
+    core.toggle_expanded(clock.now());
+    assert_eq!(
+        core.snapshot(clock.now()).expanded.map(|e| e.screen),
+        Some(PageName::Focus),
+        "open_on home goes back to the first page"
+    );
+}
+
+#[test]
+fn the_engine_samples_the_system_only_while_control_shows() {
+    let clock = Clock::new();
+    let mut core = focus_core(&clock);
+    assert!(!core.wants_system());
+    core.toggle_expanded(clock.now());
+    assert!(!core.wants_system(), "Home is showing");
+    core.set_screen(PageName::Control, clock.now());
+    assert!(core.wants_system());
+    let system = SystemView {
+        volume: Some(62),
+        muted: false,
+        battery: Some(BatteryView {
+            percent: 94,
+            charging: true,
+        }),
+        ram: Some(79),
+        cpu: Some(21),
+    };
+    core.set_system(system.clone(), clock.now());
+    assert_eq!(
+        core.snapshot(clock.now()).expanded.map(|e| e.system),
+        Some(system)
+    );
+    core.close_expanded(clock.now());
+    assert!(!core.wants_system());
+}
+
+#[test]
+fn the_goal_ring_counts_today_against_the_daily_goal() {
+    let mut clock = Clock::new();
+    let settings = Settings {
+        daily_goal_min: 60,
+        ..Default::default()
+    };
+    let mut core = Core::new(settings, clock.now());
+    core.set_day("2026-11-07".into(), clock.now());
+    core.focus_length(0, clock.now());
+    core.focus_start(clock.now());
+    core.toggle_expanded(clock.now());
+    let now = clock.advance(30 * 60_000);
+    core.tick(now);
+    let goal = focus_view(&core, now).goal;
+    assert_eq!(goal.done, "30 min");
+    assert_eq!(goal.target, "1 h");
+    assert!((goal.progress - 0.5).abs() < 0.01);
+    assert!(!goal.met);
 }
 
 #[test]
