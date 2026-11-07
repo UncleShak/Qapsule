@@ -1,8 +1,11 @@
 name: Build Windows installer
 
 # Builds an unsigned Qapsule installer (NSIS) and uploads it as a downloadable
-# artifact. Run it by hand from the Actions tab, on any branch.
+# artifact: on every push to the overhaul branch, or by hand from the Actions tab
+# once this file is on main.
 on:
+  push:
+    branches: [overhaul]
   workflow_dispatch:
 
 permissions:
