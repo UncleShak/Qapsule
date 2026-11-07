@@ -8,8 +8,8 @@ const SOURCES: { id: AccentSource; label: string }[] = [
 ];
 
 const MOTIONS: { id: Motion; label: string }[] = [
-  { id: "calm", label: "Calm" },
   { id: "lively", label: "Lively" },
+  { id: "calm", label: "Calm" },
 ];
 
 const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;

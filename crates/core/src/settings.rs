@@ -41,10 +41,10 @@ impl VisibilityMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Motion {
-    /// Qapsule's own springs: barely any overshoot.
-    #[default]
+    /// Barely any overshoot, on Qapsule's original timings.
     Calm,
-    /// The same timings with a visible bounce.
+    /// The default: real springs with a little give, and content that blurs in.
+    #[default]
     Lively,
 }
 
@@ -376,7 +376,7 @@ impl Default for Settings {
             accent_source: AccentSource::Wallpaper,
             custom_accent: "#60CDFF".to_string(),
             wallpaper_tint: true,
-            motion: Motion::Calm,
+            motion: Motion::Lively,
             do_not_disturb: false,
             notifications: HashMap::new(),
             expand_on: ExpandOn::Click,

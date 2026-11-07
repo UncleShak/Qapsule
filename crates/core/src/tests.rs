@@ -3297,12 +3297,12 @@ fn seconds_are_drawn_only_while_the_capsule_is_shown() {
 
 #[test]
 fn motion_is_read_from_appearance() {
-    assert_eq!(Settings::default().motion, Motion::Calm);
-    let (settings, warnings) = Settings::from_toml("[appearance]\nmotion = \"lively\"\n");
+    assert_eq!(Settings::default().motion, Motion::Lively);
+    let (settings, warnings) = Settings::from_toml("[appearance]\nmotion = \"calm\"\n");
     assert!(warnings.is_empty());
-    assert_eq!(settings.motion, Motion::Lively);
+    assert_eq!(settings.motion, Motion::Calm);
     let (settings, warnings) = Settings::from_toml("[appearance]\nmotion = \"bouncy\"\n");
     assert_eq!(warnings.len(), 1);
-    assert_eq!(settings.motion, Motion::Calm);
+    assert_eq!(settings.motion, Motion::Lively);
     assert_eq!(settings::category(focus::SOURCE), "focus");
 }

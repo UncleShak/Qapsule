@@ -30,7 +30,7 @@ Tanatswa's earlier notch app has a study timer that knows which module you are w
 - **The log:** focused seconds are credited by day and module, and kept for 180 days. The engine saves it to `%APPDATA%\Qapsule\study.toml` once a minute while running and on every change (written beside the file, then renamed over it). The stats are this week's bars (Monday to Sunday), up to four modules ranked by time, today's total, sessions today, and a streak of days with at least 5 minutes. Module colours come from Rust in first-seen order.
 - **Screens:** `ExpandedView` gains `screen` (`focus` or `main`) and `focus`. The left and right arrows, the wheel and the pips move between screens. The view opens on the screen it was last left on, and clicking the timer in the peek opens it on Focus.
 - **Protocol:** `focus:` joins the reserved source prefixes, so a pipe client can't pose as the timer. No new message or error code.
-- **Motion:** `[appearance] motion = "calm" | "lively"`, default calm, also in the settings window. Lively keeps every duration and swaps the spring curves for bouncier ones (`scripts/springs.ts` generates both sets). The UI sets `data-motion` on `<html>`, and reduced motion still wins.
+- **Motion:** `[appearance] motion = "calm" | "lively"`, default lively since the overhaul branch, also in the settings window. Lively uses real springs from stiffness and damping (`scripts/springs.ts` generates both sets), runs 1.25 times longer than calm, blurs content in, gives a little on press, and blurs the screen being left. The UI sets `data-motion` on `<html>`, and reduced motion still wins.
 
 ## Consequences
 

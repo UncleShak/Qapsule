@@ -12,7 +12,7 @@ function App() {
   usePalette(state?.palette ?? null);
 
   // Calm or lively springs (decision 0012): tokens.css swaps the curves on this attribute.
-  const motion = state?.motion ?? "calm";
+  const motion = state?.motion ?? "lively";
   useEffect(() => {
     document.documentElement.dataset.motion = motion;
   }, [motion]);

@@ -202,7 +202,9 @@ export function Capsule({ state, hovered }: { state: UiState; hovered: boolean }
   if (!p || p.kind !== now.kind || p.seq !== now.seq || p.hovered !== now.hovered) {
     chosen.current = motion(p, now);
   }
-  const [curve, duration] = chosen.current;
+  const [curve, calmDuration] = chosen.current;
+  // Lively springs ring on a little longer (decision 0012; scripts/springs.ts samples them so).
+  const duration = state.motion === "lively" ? Math.round(calmDuration * 1.25) : calmDuration;
   useEffect(() => {
     previous.current = now;
   });

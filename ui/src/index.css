@@ -200,6 +200,7 @@ button {
   from {
     opacity: 0;
     transform: translateY(-6px) scale(0.96);
+    filter: blur(var(--enter-blur, 0px));
   }
   to {
     opacity: 1;
@@ -325,6 +326,7 @@ button {
   from {
     opacity: 0;
     transform: translateY(-6px) scale(0.96);
+    filter: blur(var(--enter-blur, 0px));
   }
 }
 
@@ -1641,5 +1643,32 @@ button {
 
   .module-row {
     animation: fade-in 120ms linear both;
+  }
+}
+
+/* Lively motion (decision 0012): presses give, and the screen being left blurs away
+   as the track slides. Calm keeps both still. */
+:root[data-motion="lively"] :is(button, a, .item, .bubble):active {
+  scale: 0.95;
+}
+
+:root[data-motion="lively"] .screen-page {
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    filter var(--dur-slow) var(--ease-out);
+}
+
+:root[data-motion="lively"] .screen-page[aria-hidden="true"] {
+  opacity: 0.25;
+  filter: blur(6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-motion="lively"] :is(button, a, .item, .bubble):active {
+    scale: none;
+  }
+
+  :root[data-motion="lively"] .screen-page[aria-hidden="true"] {
+    filter: none;
   }
 }
